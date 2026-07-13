@@ -1,0 +1,12 @@
+﻿<Application x:Class="RDCS.EmployeeAgent.UI.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:RDCS.EmployeeAgent.UI"
+             xmlns:converters="clr-namespace:RDCS.EmployeeAgent.UI.Converters">
+    <Application.Resources>
+        <ResourceDictionary>
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+            <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

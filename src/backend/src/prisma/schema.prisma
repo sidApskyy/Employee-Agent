@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model EmployeeDevice {
+  id                String   @id @default(uuid())
+  employeeId        String   @map("employee_id")
+  companyId         String   @map("company_id")
+  deviceName        String   @map("device_name")
+  computerName      String   @map("computer_name")
+  machineGuid       String   @map("machine_guid")
+  fingerprint       String   @unique
+  osVersion         String   @map("os_version")
+  windowsUsername   String   @map("windows_username")
+  processor         String
+  ramGb             Int      @map("ram_gb")
+  diskSizeGb        Int      @map("disk_size_gb")
+  macAddress        String   @map("mac_address")
+  agentVersion      String   @map("agent_version")
+  configVersion     String   @map("config_version")
+  isOnline          Boolean  @default(false) @map("is_online")
+  isActive          Boolean  @default(true) @map("is_active")
+  isBlocked         Boolean  @default(false) @map("is_blocked")
+  lastSeenAt        DateTime? @map("last_seen_at")
+  registeredAt      DateTime @default(now()) @map("registered_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  sessions          AgentSession[]
+  logs              AgentLog[]
+
+  @@index([employeeId])
+  @@index([companyId])
+  @@index([fingerprint])
+  @@index([isOnline, lastSeenAt])
+  @@index([registeredAt])
+  @@map("employee_devices")
+}
+
+model AgentSession {
+  id              String    @id @default(uuid())
+  deviceId        String    @map("device_id")
+  employeeId      String    @map("employee_id")
+  companyId       String    @map("company_id")
+  accessTokenJti  String?   @map("access_token_jti")
+  refreshTokenHash String  @map("refresh_token_hash")
+  ipAddress       String?   @map("ip_address")
+  userAgent       String?   @map("user_agent")
+  startedAt       DateTime  @default(now()) @map("started_at")
+  lastActivityAt  DateTime  @default(now()) @map("last_activity_at")
+  expiresAt       DateTime? @map("expires_at")
+  isRevoked       Boolean   @default(false) @map("is_revoked")
+  revokedAt       DateTime? @map("revoked_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  device          EmployeeDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([employeeId])
+  @@index([refreshTokenHash])
+  @@index([isRevoked, expiresAt])
+  @@map("agent_sessions")
+}
+
+model AgentVersion {
+  id              String   @id @default(uuid())
+  version         String   @unique
+  environment     String   @default("production")
+  downloadUrl     String?  @map("download_url")
+  releaseNotes    String?  @map("release_notes")
+  isMandatory     Boolean  @default(false) @map("is_mandatory")
+  minimumConfigVersion String? @map("minimum_config_version")
+  publishedAt     DateTime @default(now()) @map("published_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([version])
+  @@index([environment])
+  @@map("agent_versions")
+}
+
+model UploadedFile {
+  id              String   @id @default(uuid())
+  jobId           String   @unique @map("job_id")
+  correlationId   String   @map("correlation_id")
+  employeeId      String   @map("employee_id")
+  deviceId        String   @map("device_id")
+  s3Bucket        String   @map("s3_bucket")
+  s3ObjectKey     String   @map("s3_object_key")
+  s3Url           String   @map("s3_url")
+  fileSize        Int      @map("file_size")
+  checksum        String
+  checksumVerified Boolean @default(false) @map("checksum_verified")
+  uploadStatus    String   @default("uploaded") @map("upload_status")
+  uploadedAt      DateTime @default(now()) @map("uploaded_at")
+  completedAt     DateTime? @map("completed_at")
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  auditLogs       UploadAudit[]
+
+  @@index([employeeId])
+  @@index([deviceId])
+  @@index([jobId])
+  @@index([uploadedAt])
+  @@map("uploaded_files")
+}
+
+model StorageUsage {
+  id              String   @id @default(uuid())
+  employeeId      String   @map("employee_id")
+  companyId       String   @map("company_id")
+  date            DateTime @db.Date
+  fileCount       Int      @default(0) @map("file_count")
+  totalSizeBytes  Int      @default(0) @map("total_size_bytes")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([employeeId, date])
+  @@index([companyId])
+  @@index([date])
+  @@map("storage_usage")
+}
+
+model UploadAudit {
+  id          String   @id @default(uuid())
+  uploadId    String   @map("upload_id")
+  action      String
+  status      String
+  message     String?
+  performedAt DateTime @default(now()) @map("performed_at")
+
+  upload      UploadedFile @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@index([uploadId])
+  @@index([performedAt])
+  @@map("upload_audits")
+}
+
+model UploadSession {
+  id          String    @id @default(uuid())
+  employeeId  String    @map("employee_id")
+  deviceId    String    @map("device_id")
+  startedAt   DateTime  @default(now()) @map("started_at")
+  endedAt     DateTime? @map("ended_at")
+  totalFiles  Int       @default(0) @map("total_files")
+  totalBytes  Int       @default(0) @map("total_bytes")
+  status      String    @default("active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([employeeId])
+  @@index([deviceId])
+  @@index([startedAt])
+  @@map("upload_sessions")
+}
+
+model AgentLog {
+  id              String   @id @default(uuid())
+  deviceId        String?  @map("device_id")
+  employeeId      String?  @map("employee_id")
+  companyId       String?  @map("company_id")
+  sessionId       String?  @map("session_id")
+  category        String
+  level           String
+  message         String
+  exception       String?
+  properties      Json?
+  loggedAt        DateTime @default(now()) @map("logged_at")
+  receivedAt      DateTime @default(now()) @map("received_at")
+
+  device          EmployeeDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId])
+  @@index([employeeId])
+  @@index([companyId])
+  @@index([category])
+  @@index([level])
+  @@index([loggedAt])
+  @@index([receivedAt])
+  @@map("agent_logs")
+}

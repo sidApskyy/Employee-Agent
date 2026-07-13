@@ -1,0 +1,9 @@
+{
+  "ApiUrl": "https://api.rdcs.example.com",
+  "ApplicationVersion": "1.0.0",
+  "Environment": "production",
+  "RetryCount": 3,
+  "TimeoutSeconds": 30,
+  "LoggingLevel": "Information",
+  "HeartbeatIntervalSeconds": 60
+}

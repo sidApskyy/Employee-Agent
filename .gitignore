@@ -1,0 +1,16 @@
+# Backend
+src/backend/node_modules/
+src/backend/dist/
+src/backend/.env
+
+# .NET build outputs
+src/**/bin/
+src/**/obj/
+D:/RDCS-Deploy/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

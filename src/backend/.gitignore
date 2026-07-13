@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment secrets — NEVER commit this
+.env
+
+# Prisma
+prisma/migrations/0001_init/migration.sql
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db

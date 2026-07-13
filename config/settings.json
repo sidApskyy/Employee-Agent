@@ -1,0 +1,27 @@
+{
+  "ApiUrl": "https://api.rdcs.example.com",
+  "ApplicationVersion": "1.0.0",
+  "Environment": "production",
+  "RetryCount": 3,
+  "TimeoutSeconds": 30,
+  "LoggingLevel": "Information",
+  "HeartbeatIntervalSeconds": 60,
+  "StorageSettings": {
+    "RootPath": "C:\\RDCS Agent",
+    "ScreenshotsPath": "Screenshots",
+    "QueuePath": "Queue",
+    "DatabasePath": "Database",
+    "LogsPath": "Logs",
+    "TempPath": "Temp",
+    "CachePath": "Cache",
+    "ConfigPath": "Config",
+    "DiagnosticsPath": "Diagnostics",
+    "BackupPath": "Backups",
+    "LogRetentionDays": 30,
+    "MaxLogFileSizeMB": 10,
+    "TempFileMaxAgeHours": 24,
+    "CacheRetentionDays": 7,
+    "BackupRetentionDays": 30,
+    "TempCleanupIntervalHours": 24
+  }
+}

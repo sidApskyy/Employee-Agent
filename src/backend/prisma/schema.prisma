@@ -1,0 +1,376 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["rdcs"]
+}
+
+model Employee {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  passwordHash    String   @map("password_hash")
+  firstName       String   @map("first_name")
+  lastName        String   @map("last_name")
+  companyId       String   @map("company_id")
+  role            String   @default("employee")
+  isActive        Boolean  @default(true) @map("is_active")
+  isBlocked       Boolean  @default(false) @map("is_blocked")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  refreshTokens   RefreshToken[]
+
+  @@index([email])
+  @@index([companyId])
+  @@map("employees")
+  @@schema("rdcs")
+}
+
+model RefreshToken {
+  id          String   @id @default(uuid())
+  employeeId  String   @map("employee_id")
+  tokenHash   String   @unique @map("token_hash")
+  deviceId    String?  @map("device_id")
+  expiresAt   DateTime @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+  @@schema("rdcs")
+}
+
+model EmployeeDevice {
+  id                String   @id @default(uuid())
+  employeeId        String   @map("employee_id")
+  companyId         String   @map("company_id")
+  deviceName        String   @map("device_name")
+  computerName      String   @map("computer_name")
+  machineGuid       String   @map("machine_guid")
+  fingerprint       String   @unique
+  osVersion         String   @map("os_version")
+  windowsUsername   String   @map("windows_username")
+  processor         String
+  ramGb             Int      @map("ram_gb")
+  diskSizeGb        Int      @map("disk_size_gb")
+  macAddress        String   @map("mac_address")
+  agentVersion      String   @map("agent_version")
+  configVersion     String   @map("config_version")
+  isOnline          Boolean  @default(false) @map("is_online")
+  isActive          Boolean  @default(true) @map("is_active")
+  isBlocked         Boolean  @default(false) @map("is_blocked")
+  lastSeenAt        DateTime? @map("last_seen_at")
+  registeredAt      DateTime @default(now()) @map("registered_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  sessions          AgentSession[]
+  logs              AgentLog[]
+  events            AgentEvent[]
+  healthReports     HealthReport[]
+  queueJobs         QueueJob[]
+  screenshots       Screenshot[]
+
+  @@index([employeeId])
+  @@index([companyId])
+  @@index([fingerprint])
+  @@index([isOnline, lastSeenAt])
+  @@index([registeredAt])
+  @@map("employee_devices")
+  @@schema("rdcs")
+}
+
+model AgentSession {
+  id              String    @id @default(uuid())
+  deviceId        String    @map("device_id")
+  employeeId      String    @map("employee_id")
+  companyId       String    @map("company_id")
+  accessTokenJti  String?   @map("access_token_jti")
+  refreshTokenHash String  @map("refresh_token_hash")
+  ipAddress       String?   @map("ip_address")
+  userAgent       String?   @map("user_agent")
+  startedAt       DateTime  @default(now()) @map("started_at")
+  lastActivityAt  DateTime  @default(now()) @map("last_activity_at")
+  expiresAt       DateTime? @map("expires_at")
+  isRevoked       Boolean   @default(false) @map("is_revoked")
+  revokedAt       DateTime? @map("revoked_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  device          EmployeeDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([employeeId])
+  @@index([refreshTokenHash])
+  @@index([isRevoked, expiresAt])
+  @@map("agent_sessions")
+  @@schema("rdcs")
+}
+
+model AgentVersion {
+  id              String   @id @default(uuid())
+  version         String   @unique
+  environment     String   @default("production")
+  downloadUrl     String?  @map("download_url")
+  releaseNotes    String?  @map("release_notes")
+  isMandatory     Boolean  @default(false) @map("is_mandatory")
+  minimumConfigVersion String? @map("minimum_config_version")
+  publishedAt     DateTime @default(now()) @map("published_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([version])
+  @@index([environment])
+  @@map("agent_versions")
+  @@schema("rdcs")
+}
+
+model AgentLog {
+  id              String   @id @default(uuid())
+  deviceId        String?  @map("device_id")
+  employeeId      String?  @map("employee_id")
+  companyId       String?  @map("company_id")
+  sessionId       String?  @map("session_id")
+  category        String
+  level           String
+  message         String
+  exception       String?
+  properties      Json?
+  loggedAt        DateTime @default(now()) @map("logged_at")
+  receivedAt      DateTime @default(now()) @map("received_at")
+
+  device          EmployeeDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId])
+  @@index([employeeId])
+  @@index([companyId])
+  @@index([category])
+  @@index([level])
+  @@index([loggedAt])
+  @@index([receivedAt])
+  @@map("agent_logs")
+  @@schema("rdcs")
+}
+
+model Policy {
+  id              String   @id @default(uuid())
+  policyType      String   @unique @map("policy_type")
+  companyId       String   @map("company_id")
+  policyJson      Json     @map("policy_json")
+  version         String
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@index([policyType])
+  @@map("policies")
+  @@schema("rdcs")
+}
+
+model FeatureFlag {
+  id              String   @id @default(uuid())
+  flagName        String   @unique @map("flag_name")
+  companyId       String?  @map("company_id")
+  isEnabled       Boolean  @default(false) @map("is_enabled")
+  description     String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@index([flagName])
+  @@map("feature_flags")
+  @@schema("rdcs")
+}
+
+model AgentEvent {
+  id              String   @id @default(uuid())
+  deviceId        String   @map("device_id")
+  employeeId      String   @map("employee_id")
+  companyId       String   @map("company_id")
+  eventType       String   @map("event_type")
+  eventData       Json     @map("event_data")
+  occurredAt      DateTime @default(now()) @map("occurred_at")
+  receivedAt      DateTime @default(now()) @map("received_at")
+
+  device          EmployeeDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([employeeId])
+  @@index([companyId])
+  @@index([eventType])
+  @@index([occurredAt])
+  @@map("agent_events")
+  @@schema("rdcs")
+}
+
+model HealthReport {
+  id              String   @id @default(uuid())
+  deviceId        String   @map("device_id")
+  employeeId      String   @map("employee_id")
+  companyId       String   @map("company_id")
+  cpuPercent      Float    @map("cpu_percent")
+  ramUsedMb       Int      @map("ram_used_mb")
+  diskUsedGb      Int      @map("disk_used_gb")
+  isOnline        Boolean  @map("is_online")
+  queueSize       Int      @map("queue_size")
+  databaseStatus  String   @map("database_status")
+  serviceStatus   Json     @map("service_status")
+  reportedAt      DateTime @default(now()) @map("reported_at")
+
+  device          EmployeeDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([employeeId])
+  @@index([companyId])
+  @@index([reportedAt])
+  @@map("health_reports")
+  @@schema("rdcs")
+}
+
+model QueueJob {
+  id              String   @id @default(uuid())
+  deviceId        String   @map("device_id")
+  employeeId      String   @map("employee_id")
+  companyId       String   @map("company_id")
+  jobType         String   @map("job_type")
+  jobPriority     Int      @map("job_priority")
+  jobState        String   @map("job_state")
+  payload         Json
+  retryCount      Int      @default(0) @map("retry_count")
+  maxRetryCount   Int      @default(3) @map("max_retry_count")
+  error           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  scheduledAt     DateTime? @map("scheduled_at")
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  nextRetryAt     DateTime? @map("next_retry_at")
+
+  device          EmployeeDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([employeeId])
+  @@index([companyId])
+  @@index([jobState])
+  @@index([scheduledAt])
+  @@map("queue_jobs")
+  @@schema("rdcs")
+}
+
+model UploadedFile {
+  id              String   @id @default(uuid())
+  jobId           String   @unique @map("job_id")
+  correlationId   String   @map("correlation_id")
+  employeeId      String   @map("employee_id")
+  deviceId        String   @map("device_id")
+  s3Bucket        String   @map("s3_bucket")
+  s3ObjectKey     String   @map("s3_object_key")
+  s3Url           String   @map("s3_url")
+  fileSize        Int      @map("file_size")
+  checksum        String
+  checksumVerified Boolean @default(false) @map("checksum_verified")
+  uploadStatus    String   @default("uploaded") @map("upload_status")
+  uploadedAt      DateTime @default(now()) @map("uploaded_at")
+  completedAt     DateTime? @map("completed_at")
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  auditLogs       UploadAudit[]
+
+  @@index([employeeId])
+  @@index([deviceId])
+  @@index([jobId])
+  @@index([uploadedAt])
+  @@map("uploaded_files")
+  @@schema("rdcs")
+}
+
+model StorageUsage {
+  id              String   @id @default(uuid())
+  employeeId      String   @map("employee_id")
+  companyId       String   @map("company_id")
+  date            DateTime @db.Date
+  fileCount       Int      @default(0) @map("file_count")
+  totalSizeBytes  Int      @default(0) @map("total_size_bytes")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([employeeId, date])
+  @@index([companyId])
+  @@index([date])
+  @@map("storage_usage")
+  @@schema("rdcs")
+}
+
+model UploadAudit {
+  id          String   @id @default(uuid())
+  uploadId    String   @map("upload_id")
+  action      String
+  status      String
+  message     String?
+  performedAt DateTime @default(now()) @map("performed_at")
+
+  upload      UploadedFile @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@index([uploadId])
+  @@index([performedAt])
+  @@map("upload_audits")
+  @@schema("rdcs")
+}
+
+model UploadSession {
+  id          String    @id @default(uuid())
+  employeeId  String    @map("employee_id")
+  deviceId    String    @map("device_id")
+  startedAt   DateTime  @default(now()) @map("started_at")
+  endedAt     DateTime? @map("ended_at")
+  totalFiles  Int       @default(0) @map("total_files")
+  totalBytes  Int       @default(0) @map("total_bytes")
+  status      String    @default("active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([employeeId])
+  @@index([deviceId])
+  @@index([startedAt])
+  @@map("upload_sessions")
+  @@schema("rdcs")
+}
+
+model Screenshot {
+  id              String   @id @default(uuid())
+  employeeId      String   @map("employee_id")
+  deviceId        String   @map("device_id")
+  monitorId       String   @map("monitor_id")
+  captureTimeUtc  DateTime @map("capture_time_utc")
+  width           Int
+  height          Int
+  format          String
+  quality         Int
+  compressed      Boolean  @default(false)
+  fileSizeBytes   BigInt   @map("file_size_bytes")
+  correlationId   String   @map("correlation_id")
+  storagePath     String?  @map("storage_path")
+  storageProvider String?  @default("Local") @map("storage_provider")
+  uploadStatus    String   @default("Pending") @map("upload_status")
+  uploadedAtUtc   DateTime? @map("uploaded_at_utc")
+  createdAtUtc    DateTime @default(now()) @map("created_at_utc")
+  updatedAtUtc    DateTime @updatedAt @map("updated_at_utc")
+
+  device          EmployeeDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([deviceId])
+  @@index([captureTimeUtc])
+  @@index([uploadStatus])
+  @@map("screenshots")
+  @@schema("rdcs")
+}

@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="7.0.20" />
+    <PackageReference Include="Dapper" Version="2.1.35" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RDCS.EmployeeAgent.Core\RDCS.EmployeeAgent.Core.csproj" />
+    <ProjectReference Include="..\RDCS.EmployeeAgent.Shared\RDCS.EmployeeAgent.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

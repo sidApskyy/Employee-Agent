@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net7.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="4.0.100.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="7.0.1" />
+    <PackageReference Include="System.Drawing.Common" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RDCS.EmployeeAgent.Core\RDCS.EmployeeAgent.Core.csproj" />
+    <ProjectReference Include="..\RDCS.EmployeeAgent.Shared\RDCS.EmployeeAgent.Shared.csproj" />
+    <ProjectReference Include="..\RDCS.EmployeeAgent.Persistence\RDCS.EmployeeAgent.Persistence.csproj" />
+    <ProjectReference Include="..\RDCS.EmployeeAgent.Infrastructure\RDCS.EmployeeAgent.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
