@@ -35,8 +35,10 @@ export const createQueueJob = async (req: Request, res: Response) => {
         companyId,
         jobType,
         jobPriority,
+        jobState: 'Pending',
         payload,
-        scheduledAt: scheduledAt ? new Date(scheduledAt) : null
+        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+        device: { connect: { id: deviceId } }
       }
     });
     
@@ -52,7 +54,7 @@ export const updateQueueJob = async (req: Request, res: Response) => {
     const { jobState, error, startedAt, completedAt, nextRetryAt } = req.body;
     
     const job = await prisma.queueJob.update({
-      where: { id },
+      where: { id: String(id) },
       data: {
         jobState,
         error,

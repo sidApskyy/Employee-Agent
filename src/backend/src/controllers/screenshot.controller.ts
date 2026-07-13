@@ -5,6 +5,8 @@ import { AmazonS3Provider } from '../providers/AmazonS3Provider';
 const prisma = new PrismaClient();
 const s3 = new AmazonS3Provider();
 
+const qs = (v: any): string | undefined => (v ? String(v) : undefined);
+
 export class ScreenshotController {
   async getScreenshotById(req: Request, res: Response) {
     try {

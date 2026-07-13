@@ -8,7 +8,7 @@ export const getPolicies = async (req: Request, res: Response) => {
     const { companyId } = req.query;
     
     const policies = await prisma.policy.findMany({
-      where: companyId ? { companyId: companyId as string } : undefined,
+      where: companyId ? { companyId: String(companyId) } : undefined,
       orderBy: { updatedAt: 'desc' }
     });
     
@@ -26,7 +26,7 @@ export const getPolicyByType = async (req: Request, res: Response) => {
     const policy = await prisma.policy.findFirst({
       where: {
         policyType,
-        companyId: companyId as string
+        companyId: companyId ? String(companyId) : undefined
       }
     });
     
@@ -66,7 +66,7 @@ export const updatePolicy = async (req: Request, res: Response) => {
     const { policyJson, version, isActive } = req.body;
     
     const policy = await prisma.policy.updateMany({
-      where: { policyType },
+      where: { policyType: String(policyType) },
       data: {
         policyJson,
         version,
@@ -85,7 +85,7 @@ export const deletePolicy = async (req: Request, res: Response) => {
     const { policyType } = req.params;
     
     await prisma.policy.delete({
-      where: { policyType }
+      where: { policyType: String(policyType) }
     });
     
     res.status(204).send();

@@ -8,7 +8,7 @@ export const getFeatureFlags = async (req: Request, res: Response) => {
     const { companyId } = req.query;
     
     const flags = await prisma.featureFlag.findMany({
-      where: companyId ? { companyId: companyId as string } : undefined,
+      where: companyId ? { companyId: String(companyId) } : undefined,
       orderBy: { updatedAt: 'desc' }
     });
     
@@ -26,7 +26,7 @@ export const getFeatureFlagByName = async (req: Request, res: Response) => {
     const flag = await prisma.featureFlag.findFirst({
       where: {
         flagName,
-        companyId: companyId as string
+        companyId: (companyId as string) ?? undefined
       }
     });
     
@@ -65,7 +65,7 @@ export const updateFeatureFlag = async (req: Request, res: Response) => {
     const { isEnabled, description } = req.body;
     
     const flag = await prisma.featureFlag.updateMany({
-      where: { flagName },
+      where: { flagName: String(flagName) },
       data: {
         isEnabled,
         description
