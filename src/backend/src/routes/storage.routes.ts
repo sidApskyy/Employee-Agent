@@ -41,4 +41,10 @@ router.get(
   (req, res) => storageController.listFiles(req as any, res)
 );
 
+router.get(
+  '/files/:id/view',
+  authenticate,
+  (req, res) => storageController.viewScreenshot(req as any, res)
+);
+
 export default router;

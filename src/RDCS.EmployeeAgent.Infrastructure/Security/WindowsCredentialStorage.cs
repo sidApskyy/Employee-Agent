@@ -82,16 +82,16 @@ public class WindowsCredentialStorage : ITokenStorage
     private static extern bool CredWrite([In] ref CREDENTIAL credential, [In] uint flags);
 
     [DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern bool CredRead(string target, [In] uint type, [In] uint flags, [Out] out IntPtr credentialPtr);
+    private static extern bool CredRead(string target, uint type, uint flags, out IntPtr credentialPtr);
 
     [DllImport("advapi32.dll", EntryPoint = "CredDeleteW", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern bool CredDelete([In] string target, [In] uint type, [In] uint flags);
+    private static extern bool CredDelete(string target, uint type, uint flags);
 
     [DllImport("advapi32.dll", EntryPoint = "CredFree", SetLastError = true)]
     private static extern void CredFree([In] IntPtr cred);
 
-    private const int CRED_TYPE_GENERIC = 1;
-    private const int CRED_PERSIST_LOCAL_MACHINE = 4;
+    private const uint CRED_TYPE_GENERIC = 1;
+    private const uint CRED_PERSIST_LOCAL_MACHINE = 2;  // CRED_PERSIST_LOCAL_MACHINE correct value
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct CREDENTIAL
@@ -112,34 +112,45 @@ public class WindowsCredentialStorage : ITokenStorage
 
     private static void WriteCredential(string target, string username, string password)
     {
-        var credential = new CREDENTIAL
+        var passwordBytes = Encoding.Unicode.GetBytes(password);
+
+        // Windows Credential Manager hard limit is 2500 bytes
+        if (passwordBytes.Length > 2500)
+            throw new InvalidOperationException($"Credential data too large ({passwordBytes.Length} bytes). Max is 2500 bytes.");
+
+        var targetPtr = Marshal.StringToCoTaskMemUni(target);
+        var blobPtr = Marshal.AllocCoTaskMem(passwordBytes.Length);
+        var userPtr = Marshal.StringToCoTaskMemUni(username);
+
+        try
         {
-            Flags = 0,
-            Type = CRED_TYPE_GENERIC,
-            TargetName = Marshal.StringToCoTaskMemUni(target),
-            Comment = IntPtr.Zero,
-            LastWritten = new System.Runtime.InteropServices.ComTypes.FILETIME
+            Marshal.Copy(passwordBytes, 0, blobPtr, passwordBytes.Length);
+
+            var credential = new CREDENTIAL
             {
-                dwLowDateTime = 0,
-                dwHighDateTime = 0
-            },
-            CredentialBlobSize = (uint)Encoding.Unicode.GetByteCount(password),
-            CredentialBlob = Marshal.StringToCoTaskMemUni(password),
-            Persist = CRED_PERSIST_LOCAL_MACHINE,
-            AttributeCount = 0,
-            Attributes = IntPtr.Zero,
-            TargetAlias = IntPtr.Zero,
-            UserName = Marshal.StringToCoTaskMemUni(username)
-        };
+                Flags = 0,
+                Type = CRED_TYPE_GENERIC,
+                TargetName = targetPtr,
+                Comment = IntPtr.Zero,
+                LastWritten = new System.Runtime.InteropServices.ComTypes.FILETIME { dwLowDateTime = 0, dwHighDateTime = 0 },
+                CredentialBlobSize = (uint)passwordBytes.Length,
+                CredentialBlob = blobPtr,
+                Persist = CRED_PERSIST_LOCAL_MACHINE,
+                AttributeCount = 0,
+                Attributes = IntPtr.Zero,
+                TargetAlias = IntPtr.Zero,
+                UserName = userPtr
+            };
 
-        if (!CredWrite(ref credential, 0))
-        {
-            throw new Win32Exception(Marshal.GetLastWin32Error());
+            if (!CredWrite(ref credential, 0))
+                throw new Win32Exception(Marshal.GetLastWin32Error());
         }
-
-        Marshal.FreeCoTaskMem(credential.TargetName);
-        Marshal.FreeCoTaskMem(credential.CredentialBlob);
-        Marshal.FreeCoTaskMem(credential.UserName);
+        finally
+        {
+            Marshal.FreeCoTaskMem(targetPtr);
+            Marshal.FreeCoTaskMem(blobPtr);
+            Marshal.FreeCoTaskMem(userPtr);
+        }
     }
 
     private static bool TryReadCredential(string target, out string username, out string password)

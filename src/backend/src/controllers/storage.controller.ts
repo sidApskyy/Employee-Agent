@@ -1,7 +1,12 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { StorageService } from '../services/storage.service';
+import { AmazonS3Provider } from '../providers/AmazonS3Provider';
 import { successResponse, errorResponse } from '../utils/response.util';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+const s3 = new AmazonS3Provider();
 
 export class StorageController {
   private readonly storageService: StorageService;
@@ -80,6 +85,23 @@ export class StorageController {
       return res.status(200).json(successResponse(files));
     } catch (error: any) {
       return res.status(500).json(errorResponse(error.message ?? 'Failed to list files'));
+    }
+  }
+
+  async viewScreenshot(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const record = await prisma.uploadedFile.findUnique({ where: { id } });
+      if (!record || !record.s3ObjectKey) {
+        return res.status(404).json(errorResponse('Screenshot not found'));
+      }
+
+      const signedUrl = await s3.getSignedUrl(record.s3ObjectKey, 300);
+      return res.status(200).json(successResponse({ url: signedUrl, expiresInSeconds: 300 }));
+    } catch (error: any) {
+      console.error('[StorageController] viewScreenshot error:', error);
+      return res.status(500).json(errorResponse(error.message ?? 'Failed to generate view URL'));
     }
   }
 }

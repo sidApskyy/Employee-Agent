@@ -39,6 +39,8 @@ using RDCS.EmployeeAgent.UI.Views;
 using RDCS.EmployeeAgent.Shared.Utilities;
 using System.Windows;
 using System.IO;
+using Microsoft.Win32;
+using WinForms = System.Windows.Forms;
 
 namespace RDCS.EmployeeAgent.UI;
 
@@ -49,6 +51,7 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         try
         {
@@ -79,7 +82,17 @@ public partial class App : Application
                     services.AddSingleton<IExceptionHandler, GlobalExceptionHandler>();
 
                     // API Client
-                    var apiUrl = context.Configuration["ApiUrl"] ?? "https://api.rdcs.example.com";
+                    var apiUrl = context.Configuration["ApiUrl"];
+                    if (string.IsNullOrWhiteSpace(apiUrl))
+                    {
+                        MessageBox.Show(
+                            "ApiUrl is missing from appsettings.json.\n\nPlease ensure appsettings.json is in the same folder as RDCS.EmployeeAgent.UI.exe and contains a valid ApiUrl.",
+                            "Configuration Error",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                        Shutdown();
+                        return;
+                    }
                     services.AddAgentHttpClient(apiUrl);
                     services.AddSingleton<IApiClient, ApiClient>();
 
@@ -229,16 +242,31 @@ public partial class App : Application
 
     private void OnLoginSuccess()
     {
-        // Navigate to shell
+        RegisterAutoStart();
+
         var shellViewModel = _host.Services.GetRequiredService<ShellViewModel>();
         var shellWindow = new Views.ShellWindow(shellViewModel);
         shellWindow.Show();
-        
-        // Close login window
+
         if (Application.Current.Windows[0] is LoginWindow loginWindow)
         {
             loginWindow.Close();
         }
+    }
+
+    private static void RegisterAutoStart()
+    {
+        try
+        {
+            const string appName = "RDCSEmployeeAgent";
+            var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? string.Empty;
+            if (string.IsNullOrEmpty(exePath)) return;
+
+            using var key = Registry.CurrentUser.OpenSubKey(
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", writable: true);
+            key?.SetValue(appName, $"\"{exePath}\"");
+        }
+        catch { /* silently ignore - non-critical */ }
     }
 
     protected override async void OnExit(ExitEventArgs e)
