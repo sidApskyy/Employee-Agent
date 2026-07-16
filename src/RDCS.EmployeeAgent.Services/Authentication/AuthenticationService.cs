@@ -98,13 +98,30 @@ public class AuthenticationService : BaseApiService, IAuthenticationService
         _logger.LogInformation(Core.Enums.LogCategory.Authentication, "Refreshing access token");
 
         var identity = await _tokenStorage.RetrieveTokensAsync(cancellationToken);
-        if (identity == null)
+        if (identity == null || string.IsNullOrEmpty(identity.RefreshToken))
         {
             throw new Core.Exceptions.AgentException("No stored identity found for token refresh");
         }
 
-        // TODO: Implement refresh token API call when backend supports it
-        // For now, return the existing identity
+        #if DEBUG
+        identity.ExpiresAt = DateTime.UtcNow.AddHours(24);
+        await _tokenStorage.StoreTokensAsync(identity, cancellationToken);
         return identity;
+        #else
+        var response = await _apiClient.PostAsync<object, RefreshResponse>(
+            ApiRoutes.RefreshToken,
+            new { refreshToken = identity.RefreshToken },
+            cancellationToken);
+
+        identity.AccessToken = response.AccessToken;
+        identity.RefreshToken = response.RefreshToken;
+        identity.ExpiresAt = DateTime.UtcNow.AddSeconds(response.ExpiresIn);
+
+        await _tokenStorage.StoreTokensAsync(identity, cancellationToken);
+
+        _logger.LogInformation(Core.Enums.LogCategory.Authentication, "Access token refreshed successfully");
+
+        return identity;
+        #endif
     }
 }

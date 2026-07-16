@@ -39,6 +39,7 @@ using RDCS.EmployeeAgent.UI.Views;
 using RDCS.EmployeeAgent.Shared.Utilities;
 using System.Windows;
 using System.IO;
+using System.Linq;
 using Microsoft.Win32;
 using WinForms = System.Windows.Forms;
 
@@ -219,13 +220,39 @@ public partial class App : Application
             // Setup global exception handlers
             GlobalExceptionHandler.SetupGlobalHandlers(logger);
 
+            // Silent boot: if a valid session already exists (e.g. auto-start after reboot),
+            // skip the login window entirely and start directly in the background/tray.
+            var authService = _host.Services.GetRequiredService<IAuthenticationService>();
+            var hasValidSession = await authService.IsAuthenticatedAsync();
+            var identity = hasValidSession ? null : await authService.GetStoredIdentityAsync();
+
+            // Even if the access token has expired, a refresh token may still let us continue silently.
+            if (!hasValidSession && identity != null && !string.IsNullOrEmpty(identity.RefreshToken))
+            {
+                try
+                {
+                    await authService.RefreshTokenAsync();
+                    hasValidSession = true;
+                }
+                catch
+                {
+                    hasValidSession = false;
+                }
+            }
+
+            if (hasValidSession)
+            {
+                OnLoginSuccess(startHidden: true);
+                return;
+            }
+
             // Show login window
             var loginViewModel = new LoginViewModel(
-                _host.Services.GetRequiredService<IAuthenticationService>(),
+                authService,
                 _host.Services.GetRequiredService<IDeviceRegistrationService>(),
                 _host.Services.GetRequiredService<IConfigurationService>(),
                 _host.Services.GetRequiredService<IAgentLogger>(),
-                OnLoginSuccess);
+                () => OnLoginSuccess(startHidden: false));
             var loginWindow = new LoginWindow(loginViewModel);
             loginWindow.Show();
         }
@@ -240,17 +267,28 @@ public partial class App : Application
         }
     }
 
-    private void OnLoginSuccess()
+    private void OnLoginSuccess(bool startHidden = false)
     {
         RegisterAutoStart();
 
         var shellViewModel = _host.Services.GetRequiredService<ShellViewModel>();
         var shellWindow = new Views.ShellWindow(shellViewModel);
-        shellWindow.Show();
 
-        if (Application.Current.Windows[0] is LoginWindow loginWindow)
+        if (startHidden)
         {
-            loginWindow.Close();
+            // Silent boot: create the window (so tray icon + services initialize) without showing it
+            shellWindow.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            shellWindow.Show();
+            shellWindow.Hide();
+        }
+        else
+        {
+            shellWindow.Show();
+        }
+
+        foreach (var window in Application.Current.Windows.OfType<LoginWindow>().ToList())
+        {
+            window.Close();
         }
     }
 

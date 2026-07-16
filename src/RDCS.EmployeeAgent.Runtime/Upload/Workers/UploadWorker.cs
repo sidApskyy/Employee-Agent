@@ -29,6 +29,7 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ITokenStorage _tokenStorage;
+    private readonly IAuthenticationService _authenticationService;
     private SemaphoreSlim _parallelLock = new(3, 3);
 
     public override string Name => "UploadWorker";
@@ -45,6 +46,7 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
         IConfiguration configuration,
         IHttpClientFactory httpClientFactory,
         ITokenStorage tokenStorage,
+        IAuthenticationService authenticationService,
         IAgentLogger logger) : base(logger, eventBus)
     {
         _queueService = queueService;
@@ -57,6 +59,7 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
         _configuration = configuration;
         _httpClientFactory = httpClientFactory;
         _tokenStorage = tokenStorage;
+        _authenticationService = authenticationService;
     }
 
     protected override async Task OnStartedAsync(CancellationToken cancellationToken)
@@ -221,6 +224,22 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
             Logger.LogWarning(LogCategory.Application, "UploadWorker: No stored access token — agent may need to re-login");
             return string.Empty;
         }
+
+        if (identity.ExpiresAt <= DateTime.UtcNow.AddMinutes(2))
+        {
+            try
+            {
+                Logger.LogInformation(LogCategory.Application, "UploadWorker: Access token expiring, refreshing");
+                var refreshed = await _authenticationService.RefreshTokenAsync(cancellationToken);
+                return refreshed.AccessToken;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(LogCategory.Exception, "UploadWorker: Token refresh failed, using existing token", ex);
+                return identity.AccessToken;
+            }
+        }
+
         return identity.AccessToken;
     }
 
