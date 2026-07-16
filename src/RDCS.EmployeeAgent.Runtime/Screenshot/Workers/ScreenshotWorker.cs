@@ -35,6 +35,7 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
     private readonly IConfiguration _configuration;
     private readonly IUploadWorker _uploadWorker;
     private readonly IChecksumService _checksumService;
+    private readonly ITokenStorage _tokenStorage;
 
     public override string Name => "ScreenshotWorker";
 
@@ -50,6 +51,7 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
         IConfiguration configuration,
         IUploadWorker uploadWorker,
         IChecksumService checksumService,
+        ITokenStorage tokenStorage,
         IAgentLogger logger) : base(logger, eventBus)
     {
         _screenshotService = screenshotService;
@@ -63,6 +65,7 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
         _configuration = configuration;
         _uploadWorker = uploadWorker;
         _checksumService = checksumService;
+        _tokenStorage = tokenStorage;
         ScreenshotWorkerTracer.Trace($"CONSTRUCTOR: ScreenshotWorker created, config EmployeeId={configuration["Agent:EmployeeId"]}, DeviceId={configuration["Agent:DeviceId"]}");
     }
 
@@ -188,8 +191,10 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
             
             // Get policy
             var policy = await _policyEngine.GetPolicyAsync<ScreenshotPolicy>(cancellationToken);
-            employeeId = _configuration["Agent:EmployeeId"] ?? "UNKNOWN";
-            deviceId = _configuration["Agent:DeviceId"] ?? "UNKNOWN";
+
+            var identity = await _tokenStorage.RetrieveTokensAsync(cancellationToken);
+            employeeId = !string.IsNullOrEmpty(identity?.EmployeeId) ? identity.EmployeeId : (_configuration["Agent:EmployeeId"] ?? "UNKNOWN");
+            deviceId = !string.IsNullOrEmpty(identity?.DeviceId) ? identity.DeviceId : (_configuration["Agent:DeviceId"] ?? "UNKNOWN");
             
             ScreenshotWorkerTracer.Trace($"CAPTURE: EmployeeId={employeeId}, DeviceId={deviceId}");
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: EmployeeId={EmployeeId}, DeviceId={DeviceId}", employeeId, deviceId);
