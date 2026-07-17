@@ -187,7 +187,9 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
 
             var identity = await _tokenStorage.RetrieveTokensAsync(cancellationToken);
             employeeId = !string.IsNullOrEmpty(identity?.EmployeeId) ? identity.EmployeeId : (_configuration["Agent:EmployeeId"] ?? "UNKNOWN");
-            deviceId = !string.IsNullOrEmpty(identity?.DeviceId) ? identity.DeviceId : (_configuration["Agent:DeviceId"] ?? "UNKNOWN");
+            deviceId = !string.IsNullOrEmpty(identity?.DeviceId) ? identity.DeviceId
+                     : !string.IsNullOrEmpty(_configuration["Agent:DeviceId"]) ? _configuration["Agent:DeviceId"]!
+                     : Environment.MachineName;
             
             ScreenshotWorkerTracer.Trace($"CAPTURE: EmployeeId={employeeId}, DeviceId={deviceId}");
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: EmployeeId={EmployeeId}, DeviceId={DeviceId}", employeeId, deviceId);

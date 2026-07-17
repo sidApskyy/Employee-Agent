@@ -12,8 +12,8 @@ using RDCS.EmployeeAgent.Runtime.Upload.Models;
 using RDCS.EmployeeAgent.Runtime.Upload.Policy;
 using RDCS.EmployeeAgent.Runtime.Upload.Services;
 using RDCS.EmployeeAgent.Runtime.Workers;
+using RDCS.EmployeeAgent.Runtime.Screenshot.Diagnostics;
 using Microsoft.Extensions.Configuration;
-using RDCS.EmployeeAgent.Core.Interfaces;
 
 namespace RDCS.EmployeeAgent.Runtime.Upload.Workers;
 
@@ -109,22 +109,27 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         var policy = await _policyEngine.GetPolicyAsync<UploadPolicy>(cancellationToken);
+        ScreenshotWorkerTracer.Trace($"UPLOAD_EXEC: Policy Enabled={policy.Enabled}");
 
         if (!policy.Enabled)
         {
+            ScreenshotWorkerTracer.Trace("UPLOAD_EXEC: Disabled by policy, skipping");
             Logger.LogInformation(LogCategory.Application, "UploadWorker: Disabled by policy, skipping");
             return;
         }
 
         var isOnline = await _connectivityService.CheckConnectivityAsync(cancellationToken);
+        ScreenshotWorkerTracer.Trace($"UPLOAD_EXEC: ConnectivityCheck isOnline={isOnline}");
         if (!isOnline)
         {
+            ScreenshotWorkerTracer.Trace("UPLOAD_EXEC: Offline, skipping upload cycle");
             Logger.LogInformation(LogCategory.Application, "UploadWorker: Offline, skipping upload cycle");
             return;
         }
 
         if (policy.PauseOnMeteredConnection && _connectivityService.IsMeteredConnection)
         {
+            ScreenshotWorkerTracer.Trace("UPLOAD_EXEC: Metered connection, skipping");
             Logger.LogInformation(LogCategory.Application, "UploadWorker: Metered connection detected, skipping");
             return;
         }
@@ -132,6 +137,7 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
         await _retryService.ProcessDueRetriesAsync(cancellationToken);
 
         var batch = await _queueService.DequeueBatchAsync(policy.MaxParallelUploads, cancellationToken);
+        ScreenshotWorkerTracer.Trace($"UPLOAD_EXEC: Dequeued {batch.Count} jobs");
 
         if (batch.Count == 0)
             return;
@@ -149,6 +155,7 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
 
         try
         {
+            ScreenshotWorkerTracer.Trace($"UPLOAD_JOB: Starting job {job.JobId} file={job.LocalFilePath}");
             Logger.LogInformation(LogCategory.Application, "UploadWorker: Starting job {JobId}", job.JobId);
 
             if (!File.Exists(job.LocalFilePath))
@@ -175,9 +182,11 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
 
             if (result == null)
             {
+                ScreenshotWorkerTracer.Trace($"UPLOAD_JOB: {job.JobId} backend returned null — scheduling retry");
                 await _retryService.ScheduleRetryAsync(job, "Backend upload failed — no response", cancellationToken);
                 return;
             }
+            ScreenshotWorkerTracer.Trace($"UPLOAD_JOB: {job.JobId} uploaded OK, UploadId={result.UploadId}, S3Key={result.S3ObjectKey}");
 
             await _queueService.MarkUploadedAsync(job.JobId, result.UploadId, result.S3ObjectKey, cancellationToken);
 
@@ -206,6 +215,7 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
         catch (Exception ex)
         {
             stopwatch.Stop();
+            ScreenshotWorkerTracer.Trace($"UPLOAD_JOB: {job.JobId} EXCEPTION {ex.GetType().Name}: {ex.Message}");
             Logger.LogError(LogCategory.Exception, $"UploadWorker: Job {job.JobId} failed", ex);
             await _statisticsService.RecordUploadAsync(false, 0, stopwatch.ElapsedMilliseconds, cancellationToken);
             await _retryService.ScheduleRetryAsync(job, ex.Message, cancellationToken);
@@ -246,10 +256,15 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
     private async Task<UploadResultDto?> UploadToBackendAsync(UploadJob job, string checksum, CancellationToken cancellationToken)
     {
         var apiUrl = _configuration["ApiUrl"] ?? "https://api.rdcs.example.com";
+        ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: ApiUrl={apiUrl}");
         var token = await GetAccessTokenAsync(cancellationToken);
 
         if (string.IsNullOrEmpty(token))
+        {
+            ScreenshotWorkerTracer.Trace("UPLOAD_HTTP: No access token available — returning null");
             return null;
+        }
+        ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: Token acquired (len={token.Length})");
 
         using var client = _httpClientFactory.CreateClient("UploadClient");
         client.Timeout = TimeSpan.FromSeconds(120);
@@ -274,9 +289,11 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: FAILED {response.StatusCode}: {body}");
             Logger.LogError(LogCategory.Application, $"UploadWorker: Backend returned {response.StatusCode}: {body}", null);
             return null;
         }
+        ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: SUCCESS {response.StatusCode}");
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         var envelope = JsonDocument.Parse(json);
