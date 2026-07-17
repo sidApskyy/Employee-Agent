@@ -23,4 +23,5 @@ export const config = {
   s3Region: process.env.S3_REGION || 'us-east-1',
   s3AccessKeyId: process.env.S3_ACCESS_KEY_ID || '',
   s3SecretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
+  crmScreenshotApiKey: process.env.CRM_SCREENSHOT_API_KEY || '',
 };

@@ -6,6 +6,7 @@ import agentRoutes from './routes/agent.routes';
 import storageRoutes from './routes/storage.routes';
 import employeeRoutes from './routes/employee.routes';
 import screenshotRoutes from './routes/screenshot.routes';
+import crmScreenshotRoutes from './routes/crmScreenshot.routes';
 import { rateLimiter } from './middleware/rate-limit.middleware';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware';
 
@@ -24,6 +25,7 @@ export const createApp = (): Application => {
   app.use('/api/storage', storageRoutes);
   app.use('/api/employees', employeeRoutes);
   app.use('/api', screenshotRoutes);
+  app.use('/api/crm', crmScreenshotRoutes);
 
   // Error handling
   app.use(notFoundHandler);
