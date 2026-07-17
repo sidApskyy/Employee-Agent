@@ -41,10 +41,12 @@ public class PolicyEngine : IPolicyEngine
         
         if (policy == null)
         {
-            ScreenshotWorkerTracer.Trace($"POLICY_ENGINE: {policyType} not found in DB, creating default");
-            _logger.LogWarning(LogCategory.Application, "Policy {PolicyType} not found in database", policyType);
-            // Return default policy
-            return CreateDefaultPolicy<TPolicy>();
+            ScreenshotWorkerTracer.Trace($"POLICY_ENGINE: {policyType} not found in DB, creating and saving default");
+            _logger.LogWarning(LogCategory.Application, "Policy {PolicyType} not found in database; creating default", policyType);
+            policy = CreateDefaultPolicy<TPolicy>();
+            await _policyRepository.SavePolicyAsync(policyType, policy, cancellationToken);
+            _policyCache[policyType] = policy;
+            return policy;
         }
         
         _policyCache[policyType] = policy;
