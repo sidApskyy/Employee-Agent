@@ -26,7 +26,17 @@ public class UploadRepository : IUploadRepository
                 (@JobId, @CorrelationId, @EmployeeId, @DeviceId, @LocalFilePath, @S3ObjectKey,
                  @Checksum, @FileSize, @RetryCount, @MaxRetryCount, @Priority, @Status,
                  @CreatedAtUtc, @NextRetryAtUtc, @UploadedAtUtc, @CompletedAtUtc, @ErrorMessage, @UploadId)";
-        await conn.ExecuteAsync(sql, job);
+        await conn.ExecuteAsync(sql, new
+        {
+            job.JobId, job.CorrelationId, job.EmployeeId, job.DeviceId, job.LocalFilePath, job.S3ObjectKey,
+            job.Checksum, job.FileSize, job.RetryCount, job.MaxRetryCount, job.Priority,
+            Status = job.Status.ToString(),
+            CreatedAtUtc = job.CreatedAtUtc.ToString("o"),
+            NextRetryAtUtc = job.NextRetryAtUtc?.ToString("o"),
+            UploadedAtUtc = job.UploadedAtUtc?.ToString("o"),
+            CompletedAtUtc = job.CompletedAtUtc?.ToString("o"),
+            job.ErrorMessage, job.UploadId
+        });
     }
 
     public async Task UpdateJobAsync(UploadJob job, CancellationToken cancellationToken = default)
@@ -43,7 +53,15 @@ public class UploadRepository : IUploadRepository
                 ErrorMessage = @ErrorMessage,
                 UploadId = @UploadId
             WHERE JobId = @JobId";
-        await conn.ExecuteAsync(sql, job);
+        await conn.ExecuteAsync(sql, new
+        {
+            job.S3ObjectKey, job.RetryCount,
+            Status = job.Status.ToString(),
+            NextRetryAtUtc = job.NextRetryAtUtc?.ToString("o"),
+            UploadedAtUtc = job.UploadedAtUtc?.ToString("o"),
+            CompletedAtUtc = job.CompletedAtUtc?.ToString("o"),
+            job.ErrorMessage, job.UploadId, job.JobId
+        });
     }
 
     public async Task<UploadJob?> GetJobByIdAsync(string jobId, CancellationToken cancellationToken = default)
@@ -120,7 +138,15 @@ public class UploadRepository : IUploadRepository
                     S3ObjectKey = @S3ObjectKey, RetryCount = @RetryCount, Status = @Status,
                     NextRetryAtUtc = @NextRetryAtUtc, UploadedAtUtc = @UploadedAtUtc,
                     CompletedAtUtc = @CompletedAtUtc, ErrorMessage = @ErrorMessage, UploadId = @UploadId
-                WHERE JobId = @JobId", job, tx);
+                WHERE JobId = @JobId", new
+            {
+                job.S3ObjectKey, job.RetryCount,
+                Status = job.Status.ToString(),
+                NextRetryAtUtc = job.NextRetryAtUtc?.ToString("o"),
+                UploadedAtUtc = job.UploadedAtUtc?.ToString("o"),
+                CompletedAtUtc = job.CompletedAtUtc?.ToString("o"),
+                job.ErrorMessage, job.UploadId, job.JobId
+            }, tx);
         }, cancellationToken);
     }
 
@@ -183,7 +209,12 @@ public class UploadRepository : IUploadRepository
     public async Task ResetStuckUploadingJobsAsync(CancellationToken cancellationToken = default)
     {
         using var conn = _db.CreateConnection();
+        // Reset text-based statuses from current code
         await conn.ExecuteAsync(
             "UPDATE UploadQueue SET Status = 'Pending' WHERE Status = 'Uploading' OR Status = 'Preparing'");
+        // Also fix any rows that were stored with integer enum values by prior versions
+        // UploadStatus enum: 0=Pending, 1=Preparing, 2=Uploading, 3=Uploaded, 4=Completed, 5=Failed, 6=Retrying
+        await conn.ExecuteAsync(
+            "UPDATE UploadQueue SET Status = 'Pending' WHERE TYPEOF(Status) = 'integer' OR Status IN ('0','1','2','3','5','6')");
     }
 }
