@@ -38,6 +38,8 @@ export class AmazonS3Provider {
     console.log('[S3 Diagnostics] Region:', config.s3Region);
     console.log('[S3 Diagnostics] Access Key:', this.maskAccessKey(config.s3AccessKeyId));
 
+    let diagnosticFailure: unknown;
+
     try {
       const headBucketResponse = await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
       console.log('[S3 Diagnostics] HeadBucket result:', {
@@ -47,7 +49,7 @@ export class AmazonS3Provider {
       });
     } catch (error) {
       this.logAwsError('HeadBucket failed', error);
-      throw error;
+      diagnosticFailure = error;
     }
 
     try {
@@ -68,7 +70,11 @@ export class AmazonS3Provider {
       });
     } catch (error) {
       this.logAwsError('ListObjectsV2 failed', error);
-      throw error;
+      diagnosticFailure ??= error;
+    }
+
+    if (diagnosticFailure) {
+      throw diagnosticFailure;
     }
   }
 
