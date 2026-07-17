@@ -135,19 +135,6 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
                 return false;
             }
 
-            // Check office hours if enabled
-            if (policy.CaptureDuringOfficeHours)
-            {
-                var now = DateTime.Now.TimeOfDay;
-                ScreenshotWorkerTracer.Trace($"SHOULDCAPTURE: Checking office hours Now={now}, Start={policy.OfficeHoursStart}, End={policy.OfficeHoursEnd}");
-                if (now < policy.OfficeHoursStart || now > policy.OfficeHoursEnd)
-                {
-                    Logger.LogInformation(LogCategory.Application, "Outside office hours, skipping capture");
-                    ScreenshotWorkerTracer.Trace("SHOULDCAPTURE: Returning False - outside office hours");
-                    return false;
-                }
-            }
-
             ScreenshotWorkerTracer.Trace("SHOULDCAPTURE: Returning True - all checks passed");
             return true;
         }
