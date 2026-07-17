@@ -2,8 +2,10 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  HeadBucketCommand,
   HeadObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../config';
@@ -29,6 +31,45 @@ export class AmazonS3Provider {
         secretAccessKey: config.s3SecretAccessKey,
       },
     });
+  }
+
+  async runStartupDiagnostics(): Promise<void> {
+    console.log('[S3 Diagnostics] Bucket:', this.bucket);
+    console.log('[S3 Diagnostics] Region:', config.s3Region);
+    console.log('[S3 Diagnostics] Access Key:', this.maskAccessKey(config.s3AccessKeyId));
+
+    try {
+      const headBucketResponse = await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      console.log('[S3 Diagnostics] HeadBucket result:', {
+        httpStatusCode: headBucketResponse.$metadata.httpStatusCode,
+        requestId: headBucketResponse.$metadata.requestId,
+        extendedRequestId: headBucketResponse.$metadata.extendedRequestId,
+      });
+    } catch (error) {
+      this.logAwsError('HeadBucket failed', error);
+      throw error;
+    }
+
+    try {
+      const listObjectsResponse = await this.client.send(
+        new ListObjectsV2Command({ Bucket: this.bucket, MaxKeys: 5 })
+      );
+      console.log('[S3 Diagnostics] ListObjectsV2 result:', {
+        httpStatusCode: listObjectsResponse.$metadata.httpStatusCode,
+        requestId: listObjectsResponse.$metadata.requestId,
+        extendedRequestId: listObjectsResponse.$metadata.extendedRequestId,
+        keyCount: listObjectsResponse.KeyCount,
+        contents: listObjectsResponse.Contents?.map((object) => ({
+          key: object.Key,
+          size: object.Size,
+          lastModified: object.LastModified?.toISOString(),
+          eTag: object.ETag,
+        })) ?? [],
+      });
+    } catch (error) {
+      this.logAwsError('ListObjectsV2 failed', error);
+      throw error;
+    }
   }
 
   async uploadFile(
@@ -69,7 +110,8 @@ export class AmazonS3Provider {
         new HeadObjectCommand({ Bucket: this.bucket, Key: key })
       );
       return true;
-    } catch {
+    } catch (error) {
+      this.logAwsError(`HeadObject failed for key ${key}`, error);
       return false;
     }
   }
@@ -85,7 +127,46 @@ export class AmazonS3Provider {
 
   async getSignedUrl(key: string, expiresInSeconds = 300): Promise<string> {
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
-    return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+
+    try {
+      const signedUrl = await getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+      const credential = new URL(signedUrl).searchParams.get('X-Amz-Credential');
+      console.log('[S3 Diagnostics] Presigned URL result:', {
+        bucket: this.bucket,
+        key,
+        expirationSeconds: expiresInSeconds,
+        credential,
+        generatedUrl: signedUrl,
+      });
+      return signedUrl;
+    } catch (error) {
+      this.logAwsError(`GetSignedUrl failed for key ${key}`, error);
+      throw error;
+    }
+  }
+
+  private maskAccessKey(accessKeyId: string): string {
+    return accessKeyId.length <= 6 ? accessKeyId : `${accessKeyId.slice(0, 6)}*******`;
+  }
+
+  private logAwsError(operation: string, error: unknown): void {
+    const awsError = error as {
+      name?: string;
+      code?: string;
+      message?: string;
+      stack?: string;
+      $metadata?: { httpStatusCode?: number; requestId?: string; extendedRequestId?: string };
+    };
+
+    console.error(`[S3 Diagnostics] ${operation}`, {
+      awsErrorName: awsError.name,
+      awsErrorCode: awsError.code,
+      message: awsError.message,
+      httpStatus: awsError.$metadata?.httpStatusCode,
+      requestId: awsError.$metadata?.requestId,
+      extendedRequestId: awsError.$metadata?.extendedRequestId,
+      stackTrace: awsError.stack,
+    });
   }
 
   private buildObjectUrl(key: string): string {

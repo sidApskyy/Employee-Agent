@@ -46,7 +46,7 @@ export class StorageController {
 
       return res.status(201).json(successResponse(result, 'Screenshot uploaded successfully'));
     } catch (error: any) {
-      console.error('[StorageController] uploadScreenshot error:', error);
+      console.error('[StorageController] uploadScreenshot error:', error, error.stack);
       return res.status(500).json(errorResponse(error.message ?? 'Upload failed'));
     }
   }
@@ -57,7 +57,7 @@ export class StorageController {
       await this.storageService.confirmComplete(jobId);
       return res.status(200).json(successResponse({ jobId }, 'Upload marked as completed'));
     } catch (error: any) {
-      console.error('[StorageController] completeUpload error:', error);
+      console.error('[StorageController] completeUpload error:', error, error.stack);
       return res.status(500).json(errorResponse(error.message ?? 'Complete upload failed'));
     }
   }
@@ -71,6 +71,7 @@ export class StorageController {
       const usage = await this.storageService.getStorageUsage(employeeId, from, to);
       return res.status(200).json(successResponse(usage));
     } catch (error: any) {
+      console.error('[StorageController] getStorageUsage error:', error, error.stack);
       return res.status(500).json(errorResponse(error.message ?? 'Failed to retrieve usage'));
     }
   }
@@ -84,6 +85,7 @@ export class StorageController {
       const files = await this.storageService.listFiles(employeeId, limit, offset);
       return res.status(200).json(successResponse(files));
     } catch (error: any) {
+      console.error('[StorageController] listFiles error:', error, error.stack);
       return res.status(500).json(errorResponse(error.message ?? 'Failed to list files'));
     }
   }
@@ -100,7 +102,7 @@ export class StorageController {
       const signedUrl = await s3.getSignedUrl(record.s3ObjectKey, 300);
       return res.status(200).json(successResponse({ url: signedUrl, expiresInSeconds: 300 }));
     } catch (error: any) {
-      console.error('[StorageController] viewScreenshot error:', error);
+      console.error('[StorageController] viewScreenshot error:', error, error.stack);
       return res.status(500).json(errorResponse(error.message ?? 'Failed to generate view URL'));
     }
   }
