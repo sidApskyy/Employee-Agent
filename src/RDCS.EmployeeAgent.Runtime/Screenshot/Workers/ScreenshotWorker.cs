@@ -90,7 +90,7 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
                 Logger.LogWarning(LogCategory.Application, "Development mode: Enabling screenshot capture for testing");
                 ScreenshotWorkerTracer.Trace("ONSTARTED: DEBUG - policy disabled or office hours restricted, forcing enable and 24/7 capture");
                 policy.Enabled = true;
-                policy.IntervalSeconds = 30; // 30 seconds for development
+                policy.IntervalSeconds = 10; // 10 seconds for development
                 policy.LocalStorageEnabled = true;
                 policy.CaptureDuringOfficeHours = false; // Disable office hours restriction for development
                 
@@ -100,9 +100,9 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
             }
             #endif
 
-            if (policy.IntervalSeconds != 30)
+            if (policy.IntervalSeconds != 10)
             {
-                policy.IntervalSeconds = 30;
+                policy.IntervalSeconds = 10;
                 await _policyEngine.UpdatePolicyAsync(policy, cancellationToken);
             }
 
