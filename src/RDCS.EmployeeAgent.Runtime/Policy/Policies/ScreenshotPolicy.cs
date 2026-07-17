@@ -3,7 +3,7 @@ namespace RDCS.EmployeeAgent.Runtime.Policy.Policies;
 public class ScreenshotPolicy
 {
     public bool Enabled { get; set; } = true;
-    public int IntervalSeconds { get; set; } = 300;
+    public int IntervalSeconds { get; set; } = 30;
     public int Quality { get; set; } = 85;
     public string Format { get; set; } = "JPEG";
     public bool CaptureActiveWindowOnly { get; set; } = false;

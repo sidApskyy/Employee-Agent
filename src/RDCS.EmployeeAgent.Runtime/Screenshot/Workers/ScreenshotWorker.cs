@@ -100,6 +100,12 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
             }
             #endif
 
+            if (policy.IntervalSeconds != 30)
+            {
+                policy.IntervalSeconds = 30;
+                await _policyEngine.UpdatePolicyAsync(policy, cancellationToken);
+            }
+
             Configuration.ExecutionInterval = TimeSpan.FromSeconds(policy.IntervalSeconds);
             ScreenshotWorkerTracer.Trace($"ONSTARTED: ExecutionInterval set to {Configuration.ExecutionInterval.TotalSeconds}s");
             Logger.LogInformation(LogCategory.Application, 
