@@ -136,16 +136,23 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
 
         await _retryService.ProcessDueRetriesAsync(cancellationToken);
 
-        var batch = await _queueService.DequeueBatchAsync(policy.MaxParallelUploads, cancellationToken);
-        ScreenshotWorkerTracer.Trace($"UPLOAD_EXEC: Dequeued {batch.Count} jobs");
+        var totalProcessed = 0;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var batch = await _queueService.DequeueBatchAsync(policy.MaxParallelUploads, cancellationToken);
+            ScreenshotWorkerTracer.Trace($"UPLOAD_EXEC: Dequeued {batch.Count} jobs");
 
-        if (batch.Count == 0)
-            return;
+            if (batch.Count == 0)
+                break;
 
-        Logger.LogInformation(LogCategory.Application, "UploadWorker: Processing {Count} upload jobs", batch.Count);
+            Logger.LogInformation(LogCategory.Application, "UploadWorker: Processing {Count} upload jobs", batch.Count);
 
-        var uploadTasks = batch.Select(job => ProcessJobAsync(job, policy, cancellationToken));
-        await Task.WhenAll(uploadTasks);
+            var uploadTasks = batch.Select(job => ProcessJobAsync(job, policy, cancellationToken));
+            await Task.WhenAll(uploadTasks);
+            totalProcessed += batch.Count;
+        }
+
+        ScreenshotWorkerTracer.Trace($"UPLOAD_EXEC: Cycle complete, processed={totalProcessed}");
     }
 
     private async Task ProcessJobAsync(UploadJob job, UploadPolicy policy, CancellationToken cancellationToken)
@@ -155,7 +162,8 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
 
         try
         {
-            ScreenshotWorkerTracer.Trace($"UPLOAD_JOB: Starting job {job.JobId} file={job.LocalFilePath}");
+            var captureId = job.CaptureId ?? "UNKNOWN";
+            ScreenshotWorkerTracer.Trace($"UPLOAD_JOB: Starting job {job.JobId} file={job.LocalFilePath}, CaptureId={captureId}, ThreadId={Thread.CurrentThread.ManagedThreadId}");
             Logger.LogInformation(LogCategory.Application, "UploadWorker: Starting job {JobId}", job.JobId);
 
             if (!File.Exists(job.LocalFilePath))
@@ -168,7 +176,11 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
             await _queueService.MarkUploadingAsync(job.JobId, cancellationToken);
             await EventBus.PublishAsync(new UploadStarted(job.JobId, job.EmployeeId, job.DeviceId, job.FileSize, DateTime.UtcNow), cancellationToken);
 
+            var checksumStart = System.Diagnostics.Stopwatch.StartNew();
             var checksum = await _checksumService.ComputeSha256Async(job.LocalFilePath, cancellationToken);
+            checksumStart.Stop();
+            ScreenshotWorkerTracer.Trace($"UPLOAD_CHECKSUM: JobId={job.JobId}, Checksum={checksum}, Duration={checksumStart.ElapsedMilliseconds}ms, CaptureId={captureId}");
+
             if (!string.IsNullOrEmpty(job.Checksum) && !string.Equals(checksum, job.Checksum, StringComparison.OrdinalIgnoreCase))
             {
                 Logger.LogError(LogCategory.Application, $"UploadWorker: Checksum mismatch job {job.JobId}, skipping", null);
@@ -256,15 +268,17 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
     private async Task<UploadResultDto?> UploadToBackendAsync(UploadJob job, string checksum, CancellationToken cancellationToken)
     {
         var apiUrl = _configuration["ApiUrl"] ?? "https://api.rdcs.example.com";
-        ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: ApiUrl={apiUrl}");
+        var captureId = job.CaptureId ?? "UNKNOWN";
+        var uploadStart = System.Diagnostics.Stopwatch.StartNew();
+        ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: ApiUrl={apiUrl}, CaptureId={captureId}");
         var token = await GetAccessTokenAsync(cancellationToken);
 
         if (string.IsNullOrEmpty(token))
         {
-            ScreenshotWorkerTracer.Trace("UPLOAD_HTTP: No access token available — returning null");
+            ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: No access token available — returning null, CaptureId={captureId}");
             return null;
         }
-        ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: Token acquired (len={token.Length})");
+        ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: Token acquired (len={token.Length}), CaptureId={captureId}");
 
         using var client = _httpClientFactory.CreateClient("UploadClient");
         client.Timeout = TimeSpan.FromSeconds(120);
@@ -284,21 +298,43 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
         form.Add(new StringContent(job.FileSize.ToString()), "fileSize");
         form.Add(new StringContent(DateTime.UtcNow.ToString("o")), "capturedAt");
 
+        var httpStart = System.Diagnostics.Stopwatch.StartNew();
         var response = await client.PostAsync($"{apiUrl}/api/storage/upload", form, cancellationToken);
+        httpStart.Stop();
 
         if (!response.IsSuccessStatusCode)
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: FAILED {response.StatusCode}: {body}");
-            Logger.LogError(LogCategory.Application, $"UploadWorker: Backend returned {response.StatusCode}: {body}", null);
-            return null;
+            // If unauthorized, attempt a one-time token refresh and retry
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: 401 Unauthorized — attempting token refresh, CaptureId={captureId}");
+                var refreshed = await _authenticationService.RefreshTokenAsync(cancellationToken);
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", refreshed.AccessToken);
+
+                httpStart.Restart();
+                response = await client.PostAsync($"{apiUrl}/api/storage/upload", form, cancellationToken);
+                httpStart.Stop();
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: FAILED {response.StatusCode}: {body}, Duration={httpStart.ElapsedMilliseconds}ms, CaptureId={captureId}");
+                Logger.LogError(LogCategory.Application, $"UploadWorker: Backend returned {response.StatusCode}: {body}", null);
+                return null;
+            }
         }
-        ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: SUCCESS {response.StatusCode}");
+        ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP: SUCCESS {response.StatusCode}, Duration={httpStart.ElapsedMilliseconds}ms, CaptureId={captureId}");
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         var envelope = JsonDocument.Parse(json);
         var data = envelope.RootElement.GetProperty("data");
-        return JsonSerializer.Deserialize<UploadResultDto>(data.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var result = JsonSerializer.Deserialize<UploadResultDto>(data.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        
+        uploadStart.Stop();
+        ScreenshotWorkerTracer.Trace($"UPLOAD_HTTP_COMPLETE: JobId={job.JobId}, UploadId={result?.UploadId}, S3Key={result?.S3ObjectKey}, TotalDuration={uploadStart.ElapsedMilliseconds}ms, CaptureId={captureId}");
+        
+        return result;
     }
 
     private async Task ConfirmCompleteAsync(UploadJob job, UploadResultDto result, CancellationToken cancellationToken)

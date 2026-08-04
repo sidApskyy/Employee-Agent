@@ -2,7 +2,7 @@ namespace RDCS.EmployeeAgent.Runtime.Screenshot.Services;
 
 public interface IScreenshotService
 {
-    Task<Stream> CaptureFullDesktopAsync(CancellationToken cancellationToken = default);
+    Task<Stream> CaptureFullDesktopAsync(string? captureId = null, CancellationToken cancellationToken = default);
     Task<Stream> CaptureMonitorAsync(int monitorId, CancellationToken cancellationToken = default);
     Task<List<MonitorInfo>> GetMonitorInfoAsync(CancellationToken cancellationToken = default);
     Task<DesktopBounds> GetDesktopBoundsAsync(CancellationToken cancellationToken = default);

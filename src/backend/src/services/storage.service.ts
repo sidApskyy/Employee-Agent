@@ -115,4 +115,8 @@ export class StorageService {
   async listFiles(employeeId: string, limit = 50, offset = 0) {
     return this.repo.listUploadedFiles(employeeId, limit, offset);
   }
+
+  async listFilesAll(employeeId: string) {
+    return this.repo.listAllUploadedFiles(employeeId);
+  }
 }

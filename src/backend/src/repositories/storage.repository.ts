@@ -68,4 +68,11 @@ export class StorageRepository {
       skip: offset,
     });
   }
+
+  async listAllUploadedFiles(employeeId: string) {
+    return prisma.uploadedFile.findMany({
+      where: { employeeId },
+      orderBy: { uploadedAt: 'desc' },
+    });
+  }
 }

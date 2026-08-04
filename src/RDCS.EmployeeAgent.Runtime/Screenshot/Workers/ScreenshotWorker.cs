@@ -141,6 +141,17 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
                 return false;
             }
 
+            if (policy.DisableWeekends)
+            {
+                var today = DateTime.Now.DayOfWeek;
+                if (today == DayOfWeek.Saturday || today == DayOfWeek.Sunday)
+                {
+                    Logger.LogInformation(LogCategory.Application, "Screenshot capture skipped due to weekend policy");
+                    ScreenshotWorkerTracer.Trace("SHOULDCAPTURE: Returning False - weekend and DisableWeekends is true");
+                    return false;
+                }
+            }
+
             ScreenshotWorkerTracer.Trace("SHOULDCAPTURE: Returning True - all checks passed");
             return true;
         }
@@ -177,10 +188,14 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
         string? employeeId = null;
         string? deviceId = null;
 
+        // Generate unique CaptureId for this capture operation
+        var captureId = $"{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid().ToString("N")[..8]}";
+        ScreenshotWorkerTracer.Trace($"CAPTURE_START: CaptureId={captureId}, TimestampUtc={DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff}, ThreadId={Thread.CurrentThread.ManagedThreadId}");
+
         try
         {
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: Starting capture and process");
-            ScreenshotWorkerTracer.Trace("CAPTURE: Starting capture and process");
+            ScreenshotWorkerTracer.Trace($"CAPTURE: Starting capture and process, CaptureId={captureId}");
             
             // Get policy
             var policy = await _policyEngine.GetPolicyAsync<ScreenshotPolicy>(cancellationToken);
@@ -191,30 +206,33 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
                      : !string.IsNullOrEmpty(_configuration["Agent:DeviceId"]) ? _configuration["Agent:DeviceId"]!
                      : Environment.MachineName;
             
-            ScreenshotWorkerTracer.Trace($"CAPTURE: EmployeeId={employeeId}, DeviceId={deviceId}");
+            ScreenshotWorkerTracer.Trace($"CAPTURE: EmployeeId={employeeId}, DeviceId={deviceId}, CaptureId={captureId}");
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: EmployeeId={EmployeeId}, DeviceId={DeviceId}", employeeId, deviceId);
 
             // Capture screenshot
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: Capturing desktop");
-            ScreenshotWorkerTracer.Trace("CAPTURE: Calling CaptureFullDesktopAsync");
-            var captureStream = await _screenshotService.CaptureFullDesktopAsync(cancellationToken);
+            ScreenshotWorkerTracer.Trace($"CAPTURE: Calling CaptureFullDesktopAsync, CaptureId={captureId}");
+            var captureStream = await _screenshotService.CaptureFullDesktopAsync(captureId, cancellationToken);
             var originalSize = captureStream.Length;
             captureStream.Position = 0;
-            ScreenshotWorkerTracer.Trace($"CAPTURE: Captured {originalSize} bytes");
+            ScreenshotWorkerTracer.Trace($"CAPTURE: Captured {originalSize} bytes, CaptureId={captureId}");
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: Captured {OriginalSize} bytes", originalSize);
 
             // Process image (validate, resize, compress)
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: Processing image pipeline");
-            ScreenshotWorkerTracer.Trace($"CAPTURE: Calling ProcessImagePipelineAsync Format={policy.Format}, Quality={policy.Quality}");
+            var processingStart = System.Diagnostics.Stopwatch.StartNew();
+            ScreenshotWorkerTracer.Trace($"CAPTURE: Calling ProcessImagePipelineAsync Format={policy.Format}, Quality={policy.Quality}, CaptureId={captureId}");
             var processedStream = await _imageProcessingService.ProcessImagePipelineAsync(
                 captureStream,
                 policy.Format,
                 policy.Quality,
                 policy.MaxWidth,
                 policy.MaxHeight,
+                captureId,
                 cancellationToken
             );
-            ScreenshotWorkerTracer.Trace($"CAPTURE: Image processed, {processedStream.Length} bytes");
+            processingStart.Stop();
+            ScreenshotWorkerTracer.Trace($"CAPTURE: Image processed, {processedStream.Length} bytes in {processingStart.ElapsedMilliseconds}ms, CaptureId={captureId}");
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: Image processed, {ProcessedSize} bytes", processedStream.Length);
 
             // Generate storage path
@@ -240,25 +258,31 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
             {
                 Key = relativePath,
                 Content = processedStream,
-                BucketName = basePath
+                BucketName = basePath,
+                CaptureId = captureId
             };
 
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: Uploading to storage provider");
-            ScreenshotWorkerTracer.Trace($"CAPTURE: Calling storage provider UploadAsync Key={relativePath}, Bucket={basePath}");
+            var storageStart = System.Diagnostics.Stopwatch.StartNew();
+            ScreenshotWorkerTracer.Trace($"CAPTURE: Calling storage provider UploadAsync Key={relativePath}, Bucket={basePath}, CaptureId={captureId}");
             var storageResponse = await _storageProvider.UploadAsync(storageRequest, cancellationToken);
-            ScreenshotWorkerTracer.Trace($"CAPTURE: UploadAsync succeeded, URL={storageResponse.Url}, Size={storageResponse.SizeBytes}");
+            storageStart.Stop();
+            ScreenshotWorkerTracer.Trace($"CAPTURE: UploadAsync succeeded, URL={storageResponse.Url}, Size={storageResponse.SizeBytes} in {storageStart.ElapsedMilliseconds}ms, CaptureId={captureId}");
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: Storage response URL={Url}", storageResponse.Url);
             
             processedStream.Position = 0;
 
             // Compute checksum for upload integrity verification
             processedStream.Position = 0;
+            var checksumStart = System.Diagnostics.Stopwatch.StartNew();
             var checksum = await _checksumService.ComputeSha256Async(processedStream, cancellationToken);
+            checksumStart.Stop();
+            ScreenshotWorkerTracer.Trace($"CAPTURE: Checksum computed {checksum} in {checksumStart.ElapsedMilliseconds}ms, CaptureId={captureId}");
 
             // Generate metadata
-            ScreenshotWorkerTracer.Trace("CAPTURE: Generating metadata");
+            ScreenshotWorkerTracer.Trace($"CAPTURE: Generating metadata, CaptureId={captureId}");
             var metadata = await _imageProcessingService.GenerateMetadataAsync(processedStream, storageResponse.Url, cancellationToken);
-            ScreenshotWorkerTracer.Trace($"CAPTURE: Metadata generated Width={metadata.Width}, Height={metadata.Height}, FileSize={metadata.FileSizeBytes}");
+            ScreenshotWorkerTracer.Trace($"CAPTURE: Metadata generated Width={metadata.Width}, Height={metadata.Height}, FileSize={metadata.FileSizeBytes}, CaptureId={captureId}");
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: Metadata generated - Width={Width}, Height={Height}, FileSize={FileSize}", 
                 metadata.Width, metadata.Height, metadata.FileSizeBytes);
 
@@ -296,11 +320,12 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
                 Checksum = checksum,
                 FileSize = metadata.FileSizeBytes,
                 MaxRetryCount = 5,
-                Priority = 5
+                Priority = 5,
+                CaptureId = captureId
             };
 
             await _uploadWorker.EnqueueUploadAsync(uploadJob, cancellationToken);
-            ScreenshotWorkerTracer.Trace($"CAPTURE: Upload job enqueued JobId={uploadJob.JobId}");
+            ScreenshotWorkerTracer.Trace($"CAPTURE: Upload job enqueued JobId={uploadJob.JobId}, CaptureId={captureId}");
             Logger.LogInformation(LogCategory.Application, "ScreenshotWorker: Upload job enqueued for cloud sync JobId={JobId}", uploadJob.JobId);
 
             // Create queue job
@@ -359,13 +384,13 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
             ), cancellationToken);
 
             stopwatch.Stop();
-            ScreenshotWorkerTracer.Trace($"CAPTURE: Completed in {stopwatch.ElapsedMilliseconds}ms, saved to {storagePath}");
+            ScreenshotWorkerTracer.Trace($"CAPTURE_COMPLETE: CaptureId={captureId}, TotalDuration={stopwatch.ElapsedMilliseconds}ms, SavedTo={storagePath}");
             Logger.LogInformation(LogCategory.Application, $"ScreenshotWorker: Capture and processing completed in {stopwatch.ElapsedMilliseconds}ms, saved to {storagePath}");
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
-            ScreenshotWorkerTracer.Trace($"CAPTURE: EXCEPTION {ex.GetType().Name}: {ex.Message}{Environment.NewLine}StackTrace: {ex.StackTrace}");
+            ScreenshotWorkerTracer.Trace($"CAPTURE_EXCEPTION: CaptureId={captureId}, Exception={ex.GetType().Name}, Message={ex.Message}");
             Logger.LogError(LogCategory.Exception, "ScreenshotWorker: Capture and processing failed", ex);
 
             await _eventBus.PublishAsync(new ScreenshotFailed(

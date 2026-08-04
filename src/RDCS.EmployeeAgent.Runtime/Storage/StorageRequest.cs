@@ -7,4 +7,5 @@ public class StorageRequest
     public string ContentType { get; set; } = "application/octet-stream";
     public Dictionary<string, string> Metadata { get; set; } = new();
     public string? BucketName { get; set; }
+    public string? CaptureId { get; set; }
 }

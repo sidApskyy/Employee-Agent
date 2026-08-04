@@ -20,4 +20,5 @@ public class UploadJob
     public DateTime? CompletedAtUtc { get; set; }
     public string? ErrorMessage { get; set; }
     public string? UploadId { get; set; }
+    public string? CaptureId { get; set; }
 }

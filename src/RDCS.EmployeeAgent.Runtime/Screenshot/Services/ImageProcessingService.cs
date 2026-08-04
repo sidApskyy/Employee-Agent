@@ -1,6 +1,7 @@
 using RDCS.EmployeeAgent.Core.Interfaces;
 using RDCS.EmployeeAgent.Core.Enums;
 using RDCS.EmployeeAgent.Runtime.Screenshot.Models;
+using RDCS.EmployeeAgent.Runtime.Screenshot.Diagnostics;
 
 namespace RDCS.EmployeeAgent.Runtime.Screenshot.Services;
 
@@ -37,7 +38,7 @@ public class ImageProcessingService : IImageProcessingService
         }
     }
 
-    public async Task<Stream> ResizeImageAsync(Stream imageStream, int targetWidth, int targetHeight, CancellationToken cancellationToken = default)
+    public async Task<Stream> ResizeImageAsync(Stream imageStream, int targetWidth, int targetHeight, string? captureId = null, CancellationToken cancellationToken = default)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
@@ -61,6 +62,10 @@ public class ImageProcessingService : IImageProcessingService
             stopwatch.Stop();
             _logger.LogInformation(LogCategory.Application, $"Image resized to {newWidth}x{newHeight} in {stopwatch.ElapsedMilliseconds}ms");
 
+            // Diagnostic logging
+            var analysis = ImageAnalyzer.Analyze(resizedBitmap);
+            ScreenshotWorkerTracer.Trace($"PROCESSING_RESIZE: Width={newWidth}, Height={newHeight}, AvgRGB=({analysis.AverageR:F0},{analysis.AverageG:F0},{analysis.AverageB:F0}), DominantColor=RGB({analysis.DominantColor.R},{analysis.DominantColor.G},{analysis.DominantColor.B}), DominantPct={analysis.DominantColorPercentage:P2}, CaptureId={captureId ?? "UNKNOWN"}, ThreadId={Thread.CurrentThread.ManagedThreadId}");
+
             return outputStream;
         }
         catch (Exception ex)
@@ -70,7 +75,7 @@ public class ImageProcessingService : IImageProcessingService
         }
     }
 
-    public async Task<Stream> CompressImageAsync(Stream imageStream, string format, int quality, CancellationToken cancellationToken = default)
+    public async Task<Stream> CompressImageAsync(Stream imageStream, string format, int quality, string? captureId = null, CancellationToken cancellationToken = default)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
@@ -81,6 +86,13 @@ public class ImageProcessingService : IImageProcessingService
 
             stopwatch.Stop();
             _logger.LogInformation(LogCategory.Application, $"Image compressed to {format} with quality {quality} in {stopwatch.ElapsedMilliseconds}ms");
+
+            // Diagnostic logging - analyze compressed image
+            compressedStream.Position = 0;
+            using var compressedBitmap = new System.Drawing.Bitmap(compressedStream);
+            var analysis = ImageAnalyzer.Analyze(compressedBitmap);
+            ScreenshotWorkerTracer.Trace($"PROCESSING_COMPRESS: Format={format}, Quality={quality}, FileSize={compressedStream.Length}, Width={compressedBitmap.Width}, Height={compressedBitmap.Height}, AvgRGB=({analysis.AverageR:F0},{analysis.AverageG:F0},{analysis.AverageB:F0}), DominantColor=RGB({analysis.DominantColor.R},{analysis.DominantColor.G},{analysis.DominantColor.B}), DominantPct={analysis.DominantColorPercentage:P2}, CaptureId={captureId ?? "UNKNOWN"}, ThreadId={Thread.CurrentThread.ManagedThreadId}");
+            compressedStream.Position = 0;
 
             return compressedStream;
         }
@@ -114,7 +126,7 @@ public class ImageProcessingService : IImageProcessingService
         }
     }
 
-    public async Task<Stream> ProcessImagePipelineAsync(Stream imageStream, string format, int quality, int? maxWidth, int? maxHeight, CancellationToken cancellationToken = default)
+    public async Task<Stream> ProcessImagePipelineAsync(Stream imageStream, string format, int quality, int? maxWidth, int? maxHeight, string? captureId = null, CancellationToken cancellationToken = default)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         Stream currentStream = imageStream;
@@ -131,12 +143,12 @@ public class ImageProcessingService : IImageProcessingService
             // Resize (optional)
             if (maxWidth.HasValue && maxHeight.HasValue)
             {
-                currentStream = await ResizeImageAsync(currentStream, maxWidth.Value, maxHeight.Value, cancellationToken);
+                currentStream = await ResizeImageAsync(currentStream, maxWidth.Value, maxHeight.Value, captureId, cancellationToken);
                 currentStream.Position = 0;
             }
 
             // Compress
-            currentStream = await CompressImageAsync(currentStream, format, quality, cancellationToken);
+            currentStream = await CompressImageAsync(currentStream, format, quality, captureId, cancellationToken);
             currentStream.Position = 0;
 
             stopwatch.Stop();

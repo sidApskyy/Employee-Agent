@@ -21,7 +21,10 @@ const findEmployeeByEmail = async (email: string) => {
 export const listCrmScreenshots = async (req: Request, res: Response): Promise<Response> => {
   try {
     const employeeEmail = String(req.query.employeeEmail ?? '').trim();
-    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10) || 50, 1), 100);
+    const allParam = String(req.query.all ?? '').toLowerCase();
+    const fetchAll = allParam === '1' || allParam === 'true';
+    const limitMax = 10000; // allow larger pages; frontend should still paginate for UX
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10) || 50, 1), limitMax);
     const offset = Math.max(parseInt(String(req.query.offset ?? '0'), 10) || 0, 0);
 
     if (!employeeEmail) {
@@ -29,7 +32,10 @@ export const listCrmScreenshots = async (req: Request, res: Response): Promise<R
     }
 
     const employee = await findEmployeeByEmail(employeeEmail);
-    const files = await storageService.listFiles(employee.id, limit, offset);
+
+    const files = fetchAll
+      ? await storageService.listFilesAll(employee.id)
+      : await storageService.listFiles(employee.id, limit, offset);
 
     return res.status(200).json(successResponse({
       employee: {
@@ -38,6 +44,7 @@ export const listCrmScreenshots = async (req: Request, res: Response): Promise<R
         firstName: employee.firstName,
         lastName: employee.lastName,
       },
+      paging: fetchAll ? { mode: 'all', count: files.length } : { mode: 'paged', limit, offset, count: files.length },
       files: files.map((file) => ({
         id: file.id,
         fileSize: file.fileSize,

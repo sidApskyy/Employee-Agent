@@ -12,6 +12,7 @@ public class ScreenshotPolicy
     public bool CaptureDuringOfficeHours { get; set; } = false;
     public TimeSpan OfficeHoursStart { get; set; } = TimeSpan.FromHours(9);
     public TimeSpan OfficeHoursEnd { get; set; } = TimeSpan.FromHours(17);
+    public bool DisableWeekends { get; set; } = false;
     public bool CaptureMultiMonitor { get; set; } = true;
     public bool CompressionEnabled { get; set; } = true;
     public int MaxWidth { get; set; } = 1920;

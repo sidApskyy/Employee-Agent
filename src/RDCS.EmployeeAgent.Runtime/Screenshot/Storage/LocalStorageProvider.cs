@@ -1,8 +1,8 @@
 using RDCS.EmployeeAgent.Core.Interfaces;
 using RDCS.EmployeeAgent.Core.Enums;
 using RDCS.EmployeeAgent.Runtime.Storage;
-
-namespace RDCS.EmployeeAgent.Runtime.Screenshot.Storage;
+using RDCS.EmployeeAgent.Runtime.Screenshot.Diagnostics;
+using RDCS.EmployeeAgent.Runtime.Screenshot.Storage;
 
 public class LocalStorageProvider : IStorageProvider
 {
@@ -38,6 +38,10 @@ public class LocalStorageProvider : IStorageProvider
 
             stopwatch.Stop();
             _logger.LogInformation(LogCategory.Application, $"File uploaded to local storage: {request.Key} ({fileInfo.Length} bytes) in {stopwatch.ElapsedMilliseconds}ms");
+
+            // Diagnostic logging
+            var captureId = request.CaptureId ?? "UNKNOWN";
+            ScreenshotWorkerTracer.Trace($"STORAGE_LOCAL: Key={request.Key}, LocalPath={fullPath}, FileSize={fileInfo.Length}, CaptureId={captureId}, ThreadId={Thread.CurrentThread.ManagedThreadId}");
 
             return new StorageResponse
             {

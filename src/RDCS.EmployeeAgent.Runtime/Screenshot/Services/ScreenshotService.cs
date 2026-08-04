@@ -3,6 +3,7 @@ using RDCS.EmployeeAgent.Core.Enums;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
+using RDCS.EmployeeAgent.Runtime.Screenshot.Diagnostics;
 
 namespace RDCS.EmployeeAgent.Runtime.Screenshot.Services;
 
@@ -15,9 +16,10 @@ public class ScreenshotService : IScreenshotService
         _logger = logger;
     }
 
-    public async Task<Stream> CaptureFullDesktopAsync(CancellationToken cancellationToken = default)
+    public async Task<Stream> CaptureFullDesktopAsync(string? captureId = null, CancellationToken cancellationToken = default)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var copyFromScreenStart = System.Diagnostics.Stopwatch.StartNew();
 
         try
         {
@@ -27,6 +29,30 @@ public class ScreenshotService : IScreenshotService
             using (var graphics = Graphics.FromImage(bitmap))
             {
                 graphics.CopyFromScreen(bounds.X, bounds.Y, 0, 0, new Size(bounds.Width, bounds.Height), CopyPixelOperation.SourceCopy);
+            }
+
+            copyFromScreenStart.Stop();
+            ScreenshotWorkerTracer.Trace($"CAPTURE_RAW: CopyFromScreen completed in {copyFromScreenStart.ElapsedMilliseconds}ms, ThreadId={Thread.CurrentThread.ManagedThreadId}, CaptureId={captureId ?? "UNKNOWN"}");
+
+            // Analyze the raw capture
+            var analysis = ImageAnalyzer.Analyze(bitmap);
+            ScreenshotWorkerTracer.Trace($"CAPTURE_RAW: Width={analysis.Width}, Height={analysis.Height}, AvgRGB=({analysis.AverageR:F0},{analysis.AverageG:F0},{analysis.AverageB:F0}), DominantColor=RGB({analysis.DominantColor.R},{analysis.DominantColor.G},{analysis.DominantColor.B}), DominantPct={analysis.DominantColorPercentage:P2}, IsSuspicious={analysis.IsSuspicious}, Reason={analysis.SuspiciousReason}, CaptureId={captureId ?? "UNKNOWN"}");
+
+            // Save diagnostic BMP if suspicious
+            if (analysis.IsSuspicious && !string.IsNullOrEmpty(captureId))
+            {
+                try
+                {
+                    var diagFolder = Path.Combine("C:\\RDCS Agent", "Diagnostics", "Screenshots");
+                    Directory.CreateDirectory(diagFolder);
+                    var diagPath = Path.Combine(diagFolder, $"{captureId}_RAW.bmp");
+                    bitmap.Save(diagPath, ImageFormat.Bmp);
+                    ScreenshotWorkerTracer.Trace($"CAPTURE_RAW: Saved diagnostic BMP to {diagPath}, CaptureId={captureId}");
+                }
+                catch (Exception diagEx)
+                {
+                    ScreenshotWorkerTracer.Trace($"CAPTURE_RAW: Failed to save diagnostic BMP: {diagEx.Message}, CaptureId={captureId ?? "UNKNOWN"}");
+                }
             }
 
             var outputStream = new MemoryStream();

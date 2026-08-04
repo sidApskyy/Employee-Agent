@@ -21,11 +21,13 @@ const employees = [
    { firstName: 'Asma',  lastName: 'Khan',  email: 'asma.khan@rdcsgenix.com'  },
    { firstName: 'Noman',  lastName: 'Khan',    email: 'noman.khan@rdcsgenix.com'    },
    { firstName: 'Daniyal',   lastName: 'Khan', email: 'daniyal.khan@rdcsgenix.com'  },
-   { firstName: 'Manish',   lastName: 'Vishwakarma', email: 'manish.vishwakarma@rdcsgenix.com'  },
    { firstName: 'Muntaha',   lastName: 'Shaikh', email: 'muntaha.shaikh@rdcsgenix.com'  },
    { firstName: 'Shoaib',   lastName: 'Khan', email: 'shoaib.khan@rdcsgenix.com'  },
    { firstName: 'Afan',   lastName: 'Khan', email: 'afan.khan@rdcsgenix.com'  },
-   { firstName: 'Musa',   lastName: 'Shaikh', email: 'musa.shaikh@rdcsgenix.com'  },
+   { firstName: 'Parvez',   lastName: 'Shaikh', email: 'parvez.shaikh@rdcsgenix.com'  },
+   { firstName: 'Shahid',   lastName: 'Shaikh', email: 'shahid.shaikh@rdcsgenix.com'  },
+   { firstName: 'Tanya',   lastName: 'Arora', email: 'tanya.arora@rdcsgenix.com'  },
+   { firstName: 'Ashqaan',   lastName: 'Shaikh', email: 'ashqaan.shaikh@rdcsgenix.com'  },
 ];
 
 
