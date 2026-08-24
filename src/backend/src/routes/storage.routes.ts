@@ -15,8 +15,8 @@ const upload = multer({
 
 router.post(
   '/upload',
-  uploadRateLimiter,
   authenticate,
+  uploadRateLimiter,
   upload.single('file'),
   validateUpload,
   (req, res) => storageController.uploadScreenshot(req as any, res)
