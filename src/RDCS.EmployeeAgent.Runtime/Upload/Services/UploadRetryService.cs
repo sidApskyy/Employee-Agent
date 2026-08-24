@@ -69,7 +69,10 @@ public class UploadRetryService : IUploadRetryService
 
     public TimeSpan CalculateDelay(int retryCount, int baseDelayMinutes)
     {
-        var minutes = baseDelayMinutes * Math.Pow(2, retryCount - 1);
-        return TimeSpan.FromMinutes(Math.Min(minutes, 60));
+        // Seconds-based exponential backoff capped at 5 minutes, instead of
+        // minutes-based backoff capped at 60 minutes. Prevents transient failures
+        // from compounding into hours/day-long upload backlogs.
+        var seconds = 15 * Math.Pow(2, retryCount - 1);
+        return TimeSpan.FromSeconds(Math.Min(seconds, 300));
     }
 }

@@ -3,8 +3,8 @@ namespace RDCS.EmployeeAgent.Runtime.Upload.Policy;
 public class UploadPolicy
 {
     public bool Enabled { get; set; } = true;
-    public int IntervalSeconds { get; set; } = 30;
-    public int MaxParallelUploads { get; set; } = 3;
+    public int IntervalSeconds { get; set; } = 5;
+    public int MaxParallelUploads { get; set; } = 4;
     public int MaxRetryCount { get; set; } = 5;
     public int RetryBaseDelayMinutes { get; set; } = 1;
     public bool DeleteLocalAfterUpload { get; set; } = true;

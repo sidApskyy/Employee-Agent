@@ -31,6 +31,7 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
     private readonly ITokenStorage _tokenStorage;
     private readonly IAuthenticationService _authenticationService;
     private SemaphoreSlim _parallelLock = new(3, 3);
+    private bool _wasOffline = false;
 
     public override string Name => "UploadWorker";
 
@@ -122,9 +123,17 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
         ScreenshotWorkerTracer.Trace($"UPLOAD_EXEC: ConnectivityCheck isOnline={isOnline}");
         if (!isOnline)
         {
+            _wasOffline = true;
             ScreenshotWorkerTracer.Trace("UPLOAD_EXEC: Offline, skipping upload cycle");
             Logger.LogInformation(LogCategory.Application, "UploadWorker: Offline, skipping upload cycle");
             return;
+        }
+
+        if (_wasOffline)
+        {
+            ScreenshotWorkerTracer.Trace("UPLOAD_EXEC: Connectivity restored — expediting all retrying jobs for immediate catch-up");
+            await _queueService.ExpediteAllRetriesAsync(cancellationToken);
+            _wasOffline = false;
         }
 
         if (policy.PauseOnMeteredConnection && _connectivityService.IsMeteredConnection)

@@ -106,4 +106,9 @@ public class UploadQueueService : IUploadQueueService
         _logger.LogWarning(LogCategory.Application,
             "UploadQueueService: Reset stuck Uploading/Preparing jobs to Pending after crash recovery");
     }
+
+    public async Task ExpediteAllRetriesAsync(CancellationToken cancellationToken = default)
+    {
+        await _repository.ExpediteAllRetriesAsync(cancellationToken);
+    }
 }

@@ -206,6 +206,15 @@ public class UploadRepository : IUploadRepository
         return stats;
     }
 
+    public async Task ExpediteAllRetriesAsync(CancellationToken cancellationToken = default)
+    {
+        using var conn = _db.CreateConnection();
+        var now = DateTime.UtcNow.ToString("o");
+        await conn.ExecuteAsync(
+            "UPDATE UploadQueue SET NextRetryAtUtc = @now WHERE Status = 'Retrying' AND NextRetryAtUtc > @now",
+            new { now });
+    }
+
     public async Task ResetStuckUploadingJobsAsync(CancellationToken cancellationToken = default)
     {
         using var conn = _db.CreateConnection();

@@ -17,4 +17,5 @@ public interface IUploadRepository
     Task UpdateDailyStatisticsAsync(bool success, long bytesUploaded, long elapsedMs, CancellationToken cancellationToken = default);
     Task<UploadStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default);
     Task ResetStuckUploadingJobsAsync(CancellationToken cancellationToken = default);
+    Task ExpediteAllRetriesAsync(CancellationToken cancellationToken = default);
 }
