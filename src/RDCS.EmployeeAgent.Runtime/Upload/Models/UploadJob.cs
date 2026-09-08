@@ -21,4 +21,5 @@ public class UploadJob
     public string? ErrorMessage { get; set; }
     public string? UploadId { get; set; }
     public string? CaptureId { get; set; }
+    public DateTime CaptureTimeUtc { get; set; } = DateTime.UtcNow;
 }

@@ -278,6 +278,7 @@ model UploadedFile {
   checksum        String
   checksumVerified Boolean @default(false) @map("checksum_verified")
   uploadStatus    String   @default("uploaded") @map("upload_status")
+  captureTimeUtc  DateTime @default(now()) @map("capture_time_utc")
   uploadedAt      DateTime @default(now()) @map("uploaded_at")
   completedAt     DateTime? @map("completed_at")
   metadata        Json?
@@ -290,6 +291,7 @@ model UploadedFile {
   @@index([deviceId])
   @@index([jobId])
   @@index([uploadedAt])
+  @@index([captureTimeUtc])
   @@map("uploaded_files")
   @@schema("rdcs")
 }

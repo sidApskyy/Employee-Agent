@@ -3,7 +3,7 @@ namespace RDCS.EmployeeAgent.Runtime.Upload.Policy;
 public class UploadPolicy
 {
     public bool Enabled { get; set; } = true;
-    public int IntervalSeconds { get; set; } = 5;
+    public int IntervalSeconds { get; set; } = 2;
     public int MaxParallelUploads { get; set; } = 4;
     public int MaxRetryCount { get; set; } = 5;
     public int RetryBaseDelayMinutes { get; set; } = 1;

@@ -70,22 +70,31 @@ export class StorageService {
       fileSize: s3Result.sizeBytes,
       checksum: serverChecksum,
       checksumVerified,
+      captureTimeUtc: input.capturedAt,
       metadata: { originalChecksum: input.checksum, etag: s3Result.etag },
     });
 
-    await this.repo.createAuditLog({
-      uploadId: record.id,
-      action: 'upload',
-      status: 'success',
-      message: `Uploaded to S3: ${s3Key}`,
+    // Fire-and-forget: audit log and storage usage don't need to block the response
+    setImmediate(async () => {
+      try {
+        await Promise.all([
+          this.repo.createAuditLog({
+            uploadId: record.id,
+            action: 'upload',
+            status: 'success',
+            message: `Uploaded to S3: ${s3Key}`,
+          }),
+          this.repo.upsertStorageUsage(
+            input.employeeId,
+            input.companyId,
+            input.capturedAt,
+            s3Result.sizeBytes
+          ),
+        ]);
+      } catch (err) {
+        console.error('[StorageService] Background audit/usage error:', err);
+      }
     });
-
-    await this.repo.upsertStorageUsage(
-      input.employeeId,
-      input.companyId,
-      input.capturedAt,
-      s3Result.sizeBytes
-    );
 
     return {
       uploadId: record.id,

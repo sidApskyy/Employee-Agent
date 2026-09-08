@@ -21,11 +21,13 @@ public class UploadRepository : IUploadRepository
             INSERT INTO UploadQueue
                 (JobId, CorrelationId, EmployeeId, DeviceId, LocalFilePath, S3ObjectKey,
                  Checksum, FileSize, RetryCount, MaxRetryCount, Priority, Status,
-                 CreatedAtUtc, NextRetryAtUtc, UploadedAtUtc, CompletedAtUtc, ErrorMessage, UploadId)
+                 CreatedAtUtc, NextRetryAtUtc, UploadedAtUtc, CompletedAtUtc, ErrorMessage, UploadId,
+                 CaptureId, CaptureTimeUtc)
             VALUES
                 (@JobId, @CorrelationId, @EmployeeId, @DeviceId, @LocalFilePath, @S3ObjectKey,
                  @Checksum, @FileSize, @RetryCount, @MaxRetryCount, @Priority, @Status,
-                 @CreatedAtUtc, @NextRetryAtUtc, @UploadedAtUtc, @CompletedAtUtc, @ErrorMessage, @UploadId)";
+                 @CreatedAtUtc, @NextRetryAtUtc, @UploadedAtUtc, @CompletedAtUtc, @ErrorMessage, @UploadId,
+                 @CaptureId, @CaptureTimeUtc)";
         await conn.ExecuteAsync(sql, new
         {
             job.JobId, job.CorrelationId, job.EmployeeId, job.DeviceId, job.LocalFilePath, job.S3ObjectKey,
@@ -35,7 +37,9 @@ public class UploadRepository : IUploadRepository
             NextRetryAtUtc = job.NextRetryAtUtc?.ToString("o"),
             UploadedAtUtc = job.UploadedAtUtc?.ToString("o"),
             CompletedAtUtc = job.CompletedAtUtc?.ToString("o"),
-            job.ErrorMessage, job.UploadId
+            job.ErrorMessage, job.UploadId,
+            CaptureId = job.CaptureId ?? (string?)null,
+            CaptureTimeUtc = job.CaptureTimeUtc.ToString("o")
         });
     }
 
@@ -51,7 +55,9 @@ public class UploadRepository : IUploadRepository
                 UploadedAtUtc = @UploadedAtUtc,
                 CompletedAtUtc = @CompletedAtUtc,
                 ErrorMessage = @ErrorMessage,
-                UploadId = @UploadId
+                UploadId = @UploadId,
+                CaptureId = @CaptureId,
+                CaptureTimeUtc = @CaptureTimeUtc
             WHERE JobId = @JobId";
         await conn.ExecuteAsync(sql, new
         {
@@ -60,7 +66,9 @@ public class UploadRepository : IUploadRepository
             NextRetryAtUtc = job.NextRetryAtUtc?.ToString("o"),
             UploadedAtUtc = job.UploadedAtUtc?.ToString("o"),
             CompletedAtUtc = job.CompletedAtUtc?.ToString("o"),
-            job.ErrorMessage, job.UploadId, job.JobId
+            job.ErrorMessage, job.UploadId, job.JobId,
+            CaptureId = job.CaptureId ?? (string?)null,
+            CaptureTimeUtc = job.CaptureTimeUtc.ToString("o")
         });
     }
 
@@ -71,12 +79,52 @@ public class UploadRepository : IUploadRepository
             "SELECT * FROM UploadQueue WHERE JobId = @jobId", new { jobId });
     }
 
+    public async Task UpdateStatusAsync(string jobId, string status, CancellationToken cancellationToken = default)
+    {
+        using var conn = _db.CreateConnection();
+        await conn.ExecuteAsync(
+            "UPDATE UploadQueue SET Status = @status WHERE JobId = @jobId",
+            new { status, jobId });
+    }
+
+    public async Task MarkUploadedAsync(string jobId, string uploadId, string s3ObjectKey, CancellationToken cancellationToken = default)
+    {
+        using var conn = _db.CreateConnection();
+        var now = DateTime.UtcNow.ToString("o");
+        await conn.ExecuteAsync(
+            "UPDATE UploadQueue SET Status = 'Uploaded', UploadId = @uploadId, S3ObjectKey = @s3ObjectKey, UploadedAtUtc = @now WHERE JobId = @jobId",
+            new { uploadId, s3ObjectKey, now, jobId });
+    }
+
+    public async Task MarkCompletedAsync(string jobId, CancellationToken cancellationToken = default)
+    {
+        using var conn = _db.CreateConnection();
+        var now = DateTime.UtcNow.ToString("o");
+        await conn.ExecuteAsync(
+            "UPDATE UploadQueue SET Status = 'Completed', CompletedAtUtc = @now WHERE JobId = @jobId",
+            new { now, jobId });
+    }
+
+    public async Task MarkFailedAsync(string jobId, string errorMessage, CancellationToken cancellationToken = default)
+    {
+        using var conn = _db.CreateConnection();
+        await conn.ExecuteAsync(
+            "UPDATE UploadQueue SET Status = 'Failed', ErrorMessage = @errorMessage WHERE JobId = @jobId",
+            new { errorMessage, jobId });
+    }
+
     public async Task<List<UploadJob>> GetPendingJobsAsync(int limit = 50, CancellationToken cancellationToken = default)
     {
         using var conn = _db.CreateConnection();
+        var now = DateTime.UtcNow.ToString("o");
+        // Single query: get both Pending and due Retrying jobs in one shot, ordered correctly
         var results = await conn.QueryAsync<UploadJob>(
-            "SELECT * FROM UploadQueue WHERE Status = 'Pending' ORDER BY Priority DESC, CreatedAtUtc ASC LIMIT @limit",
-            new { limit });
+            @"SELECT * FROM UploadQueue
+              WHERE Status = 'Pending'
+                 OR (Status = 'Retrying' AND NextRetryAtUtc <= @now)
+              ORDER BY Priority DESC, CreatedAtUtc ASC
+              LIMIT @limit",
+            new { limit, now });
         return results.ToList();
     }
 

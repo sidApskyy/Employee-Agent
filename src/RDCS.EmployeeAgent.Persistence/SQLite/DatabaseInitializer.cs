@@ -353,7 +353,9 @@ public class DatabaseInitializer
                 UploadedAtUtc TEXT,
                 CompletedAtUtc TEXT,
                 ErrorMessage TEXT,
-                UploadId TEXT
+                UploadId TEXT,
+                CaptureId TEXT,
+                CaptureTimeUtc TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_uploadqueue_status ON UploadQueue(Status);
             CREATE INDEX IF NOT EXISTS idx_uploadqueue_priority ON UploadQueue(Priority);
@@ -361,6 +363,15 @@ public class DatabaseInitializer
             CREATE INDEX IF NOT EXISTS idx_uploadqueue_retry ON UploadQueue(NextRetryAtUtc);
         ";
         await command.ExecuteNonQueryAsync(cancellationToken);
+
+        // Add CaptureTimeUtc column if it doesn't exist (migration for existing databases)
+        try
+        {
+            var migrateCmd = connection.CreateCommand();
+            migrateCmd.CommandText = "ALTER TABLE UploadQueue ADD COLUMN CaptureTimeUtc TEXT;";
+            await migrateCmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch { /* Column already exists, ignore */ }
     }
 
     private async Task CreateUploadHistoryTableAsync(SqliteConnection connection, CancellationToken cancellationToken)

@@ -12,6 +12,7 @@ export class StorageRepository {
     fileSize: number;
     checksum: string;
     checksumVerified: boolean;
+    captureTimeUtc: Date;
     metadata?: Record<string, any>;
   }) {
     return prisma.uploadedFile.create({ data });
@@ -63,7 +64,7 @@ export class StorageRepository {
   async listUploadedFiles(employeeId: string, limit = 50, offset = 0) {
     return prisma.uploadedFile.findMany({
       where: { employeeId },
-      orderBy: { uploadedAt: 'desc' },
+      orderBy: { captureTimeUtc: 'desc' },
       take: limit,
       skip: offset,
     });
@@ -72,7 +73,7 @@ export class StorageRepository {
   async listAllUploadedFiles(employeeId: string) {
     return prisma.uploadedFile.findMany({
       where: { employeeId },
-      orderBy: { uploadedAt: 'desc' },
+      orderBy: { captureTimeUtc: 'desc' },
     });
   }
 }

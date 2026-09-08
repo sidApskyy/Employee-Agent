@@ -321,7 +321,8 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
                 FileSize = metadata.FileSizeBytes,
                 MaxRetryCount = 5,
                 Priority = 5,
-                CaptureId = captureId
+                CaptureId = captureId,
+                CaptureTimeUtc = captureTime,
             };
 
             await _uploadWorker.EnqueueUploadAsync(uploadJob, cancellationToken);

@@ -36,63 +36,31 @@ public class UploadQueueService : IUploadQueueService
 
     public async Task<List<UploadJob>> DequeueBatchAsync(int maxCount, CancellationToken cancellationToken = default)
     {
-        var pending = await _repository.GetPendingJobsAsync(maxCount, cancellationToken);
-        var retryReady = await _repository.GetRetryReadyJobsAsync(cancellationToken);
-
-        var batch = pending.Concat(retryReady)
-            .OrderByDescending(j => j.Priority)
-            .ThenBy(j => j.CreatedAtUtc)
-            .Take(maxCount)
-            .ToList();
-
-        return batch;
+        // Single query fetches both Pending and due Retrying jobs, ordered by priority then age
+        return await _repository.GetPendingJobsAsync(maxCount, cancellationToken);
     }
 
     public async Task MarkUploadingAsync(string jobId, CancellationToken cancellationToken = default)
     {
-        var job = await _repository.GetJobByIdAsync(jobId, cancellationToken);
-        if (job == null) return;
-
-        job.Status = UploadStatus.Uploading;
-        await _repository.UpdateJobAsync(job, cancellationToken);
+        await _repository.UpdateStatusAsync(jobId, "Uploading", cancellationToken);
         await _repository.RecordHistoryAsync(jobId, "Uploading", null, cancellationToken);
     }
 
     public async Task MarkUploadedAsync(string jobId, string uploadId, string s3ObjectKey, CancellationToken cancellationToken = default)
     {
-        var job = await _repository.GetJobByIdAsync(jobId, cancellationToken);
-        if (job == null) return;
-
-        job.Status = UploadStatus.Uploaded;
-        job.UploadId = uploadId;
-        job.S3ObjectKey = s3ObjectKey;
-        job.UploadedAtUtc = DateTime.UtcNow;
-
-        await _repository.UpdateJobAsync(job, cancellationToken);
+        await _repository.MarkUploadedAsync(jobId, uploadId, s3ObjectKey, cancellationToken);
         await _repository.RecordHistoryAsync(jobId, "Uploaded", $"S3Key={s3ObjectKey}", cancellationToken);
     }
 
     public async Task MarkCompletedAsync(string jobId, CancellationToken cancellationToken = default)
     {
-        var job = await _repository.GetJobByIdAsync(jobId, cancellationToken);
-        if (job == null) return;
-
-        job.Status = UploadStatus.Completed;
-        job.CompletedAtUtc = DateTime.UtcNow;
-
-        await _repository.UpdateJobAsync(job, cancellationToken);
+        await _repository.MarkCompletedAsync(jobId, cancellationToken);
         await _repository.RecordHistoryAsync(jobId, "Completed", null, cancellationToken);
     }
 
     public async Task MarkFailedAsync(string jobId, string errorMessage, CancellationToken cancellationToken = default)
     {
-        var job = await _repository.GetJobByIdAsync(jobId, cancellationToken);
-        if (job == null) return;
-
-        job.Status = UploadStatus.Failed;
-        job.ErrorMessage = errorMessage;
-
-        await _repository.UpdateJobAsync(job, cancellationToken);
+        await _repository.MarkFailedAsync(jobId, errorMessage, cancellationToken);
         await _repository.RecordHistoryAsync(jobId, "Failed", errorMessage, cancellationToken);
         await _repository.RecordFailureAsync(jobId, errorMessage, null, cancellationToken);
     }

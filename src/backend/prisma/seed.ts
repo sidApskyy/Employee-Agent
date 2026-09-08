@@ -28,6 +28,7 @@ const employees = [
    { firstName: 'Shahid',   lastName: 'Shaikh', email: 'shahid.shaikh@rdcsgenix.com'  },
    { firstName: 'Tanya',   lastName: 'Arora', email: 'tanya.arora@rdcsgenix.com'  },
    { firstName: 'Ashqaan',   lastName: 'Shaikh', email: 'ashqaan.shaikh@rdcsgenix.com'  },
+   { firstName: 'siddhant',   lastName: 'sonawane', email: 'siddhant.sonawane@rdcsgenix.com'  },
 ];
 
 

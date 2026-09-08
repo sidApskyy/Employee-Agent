@@ -32,6 +32,9 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
     private readonly IAuthenticationService _authenticationService;
     private SemaphoreSlim _parallelLock = new(3, 3);
     private bool _wasOffline = false;
+    private DateTime _lastConnectivityCheckUtc = DateTime.MinValue;
+    private bool _cachedIsOnline = true;
+    private static readonly TimeSpan ConnectivityCacheDuration = TimeSpan.FromSeconds(30);
 
     public override string Name => "UploadWorker";
 
@@ -75,7 +78,7 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
             await _policyEngine.UpdatePolicyAsync(policy, cancellationToken);
 #endif
 
-            Configuration.ExecutionInterval = TimeSpan.FromSeconds(policy.IntervalSeconds);
+            Configuration.ExecutionInterval = TimeSpan.FromSeconds(Math.Max(1, policy.IntervalSeconds));
             _parallelLock = new SemaphoreSlim(policy.MaxParallelUploads, policy.MaxParallelUploads);
 
             Logger.LogInformation(LogCategory.Application,
@@ -85,7 +88,7 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
         catch (Exception ex)
         {
             Logger.LogError(LogCategory.Exception, "UploadWorker failed to load policy, using defaults", ex);
-            Configuration.ExecutionInterval = TimeSpan.FromSeconds(30);
+            Configuration.ExecutionInterval = TimeSpan.FromSeconds(2);
         }
 
         _networkMonitor.NetworkLost += (_, _) =>
@@ -119,8 +122,19 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
             return;
         }
 
-        var isOnline = await _connectivityService.CheckConnectivityAsync(cancellationToken);
-        ScreenshotWorkerTracer.Trace($"UPLOAD_EXEC: ConnectivityCheck isOnline={isOnline}");
+        // Use cached connectivity result if recent — avoids HTTP health check on every cycle
+        var isOnline = _cachedIsOnline;
+        if (DateTime.UtcNow - _lastConnectivityCheckUtc > ConnectivityCacheDuration)
+        {
+            isOnline = await _connectivityService.CheckConnectivityAsync(cancellationToken);
+            _cachedIsOnline = isOnline;
+            _lastConnectivityCheckUtc = DateTime.UtcNow;
+            ScreenshotWorkerTracer.Trace($"UPLOAD_EXEC: ConnectivityCheck isOnline={isOnline} (fresh check)");
+        }
+        else
+        {
+            ScreenshotWorkerTracer.Trace($"UPLOAD_EXEC: ConnectivityCheck isOnline={isOnline} (cached)");
+        }
         if (!isOnline)
         {
             _wasOffline = true;
@@ -143,7 +157,8 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
             return;
         }
 
-        await _retryService.ProcessDueRetriesAsync(cancellationToken);
+        // ProcessDueRetriesAsync is no longer needed — DequeueBatchAsync now fetches
+        // both Pending and due Retrying jobs in a single query.
 
         var totalProcessed = 0;
         while (!cancellationToken.IsCancellationRequested)
@@ -185,16 +200,19 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
             await _queueService.MarkUploadingAsync(job.JobId, cancellationToken);
             await EventBus.PublishAsync(new UploadStarted(job.JobId, job.EmployeeId, job.DeviceId, job.FileSize, DateTime.UtcNow), cancellationToken);
 
-            var checksumStart = System.Diagnostics.Stopwatch.StartNew();
-            var checksum = await _checksumService.ComputeSha256Async(job.LocalFilePath, cancellationToken);
-            checksumStart.Stop();
-            ScreenshotWorkerTracer.Trace($"UPLOAD_CHECKSUM: JobId={job.JobId}, Checksum={checksum}, Duration={checksumStart.ElapsedMilliseconds}ms, CaptureId={captureId}");
-
-            if (!string.IsNullOrEmpty(job.Checksum) && !string.Equals(checksum, job.Checksum, StringComparison.OrdinalIgnoreCase))
+            // Use pre-computed checksum from ScreenshotWorker if available — avoids redundant SHA256 computation
+            string checksum;
+            if (!string.IsNullOrEmpty(job.Checksum))
             {
-                Logger.LogError(LogCategory.Application, $"UploadWorker: Checksum mismatch job {job.JobId}, skipping", null);
-                await _queueService.MarkFailedAsync(job.JobId, "Checksum mismatch — file may be corrupted", cancellationToken);
-                return;
+                checksum = job.Checksum;
+                ScreenshotWorkerTracer.Trace($"UPLOAD_CHECKSUM: JobId={job.JobId}, using pre-computed checksum, CaptureId={captureId}");
+            }
+            else
+            {
+                var checksumStart = System.Diagnostics.Stopwatch.StartNew();
+                checksum = await _checksumService.ComputeSha256Async(job.LocalFilePath, cancellationToken);
+                checksumStart.Stop();
+                ScreenshotWorkerTracer.Trace($"UPLOAD_CHECKSUM: JobId={job.JobId}, Checksum={checksum}, Duration={checksumStart.ElapsedMilliseconds}ms, CaptureId={captureId}");
             }
 
             await EventBus.PublishAsync(new UploadVerified(job.JobId, checksum, true, DateTime.UtcNow), cancellationToken);
@@ -203,6 +221,9 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
 
             if (result == null)
             {
+                // Invalidate connectivity cache on failure so next cycle re-checks
+                _cachedIsOnline = false;
+                _lastConnectivityCheckUtc = DateTime.MinValue;
                 ScreenshotWorkerTracer.Trace($"UPLOAD_JOB: {job.JobId} backend returned null — scheduling retry");
                 await _retryService.ScheduleRetryAsync(job, "Backend upload failed — no response", cancellationToken);
                 return;
@@ -211,7 +232,9 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
 
             await _queueService.MarkUploadedAsync(job.JobId, result.UploadId, result.S3ObjectKey, cancellationToken);
 
-            await ConfirmCompleteAsync(job, result, cancellationToken);
+            // Backend already marks the file as uploaded in the upload response.
+            // The separate /upload/complete call was removed to eliminate a redundant
+            // HTTP round-trip that doubled network latency per screenshot.
 
             await _queueService.MarkCompletedAsync(job.JobId, cancellationToken);
             stopwatch.Stop();
@@ -238,6 +261,9 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
             stopwatch.Stop();
             ScreenshotWorkerTracer.Trace($"UPLOAD_JOB: {job.JobId} EXCEPTION {ex.GetType().Name}: {ex.Message}");
             Logger.LogError(LogCategory.Exception, $"UploadWorker: Job {job.JobId} failed", ex);
+            // Invalidate connectivity cache on network errors
+            _cachedIsOnline = false;
+            _lastConnectivityCheckUtc = DateTime.MinValue;
             await _statisticsService.RecordUploadAsync(false, 0, stopwatch.ElapsedMilliseconds, cancellationToken);
             await _retryService.ScheduleRetryAsync(job, ex.Message, cancellationToken);
         }
@@ -305,7 +331,7 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
         form.Add(new StringContent(job.DeviceId), "deviceId");
         form.Add(new StringContent(checksum), "checksum");
         form.Add(new StringContent(job.FileSize.ToString()), "fileSize");
-        form.Add(new StringContent(DateTime.UtcNow.ToString("o")), "capturedAt");
+        form.Add(new StringContent(job.CaptureTimeUtc.ToString("o")), "capturedAt");
 
         var httpStart = System.Diagnostics.Stopwatch.StartNew();
         var response = await client.PostAsync($"{apiUrl}/api/storage/upload", form, cancellationToken);

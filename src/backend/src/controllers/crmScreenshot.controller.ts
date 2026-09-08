@@ -51,6 +51,7 @@ export const listCrmScreenshots = async (req: Request, res: Response): Promise<R
         checksumVerified: file.checksumVerified,
         uploadStatus: file.uploadStatus,
         uploadedAt: file.uploadedAt,
+        captureTimeUtc: file.captureTimeUtc,
       })),
     }));
   } catch (error: any) {
