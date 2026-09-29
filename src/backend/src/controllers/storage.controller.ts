@@ -4,6 +4,7 @@ import { StorageService } from '../services/storage.service';
 import { AmazonS3Provider } from '../providers/AmazonS3Provider';
 import { successResponse, errorResponse } from '../utils/response.util';
 import { PrismaClient } from '@prisma/client';
+import { resolveCaptureTime } from '../utils/captureTime.util';
 
 const prisma = new PrismaClient();
 const s3 = new AmazonS3Provider();
@@ -29,6 +30,7 @@ export class StorageController {
       } = req.body;
 
       const companyId = req.user?.companyId ?? 'unknown';
+      const capture = resolveCaptureTime(capturedAt, file.originalname);
 
       const result = await this.storageService.uploadScreenshot({
         jobId,
@@ -41,7 +43,8 @@ export class StorageController {
         contentType: file.mimetype,
         checksum,
         fileSize: parseInt(fileSize ?? file.size, 10),
-        capturedAt: capturedAt ? new Date(capturedAt) : new Date(),
+        capturedAt: capture.time,
+        captureTimeEstimated: capture.estimated,
       });
 
       return res.status(201).json(successResponse(result, 'Screenshot uploaded successfully'));

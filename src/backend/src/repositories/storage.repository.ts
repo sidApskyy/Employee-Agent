@@ -61,18 +61,28 @@ export class StorageRepository {
     });
   }
 
-  async listUploadedFiles(employeeId: string, limit = 50, offset = 0) {
+  async listUploadedFiles(employeeId: string, limit = 50, offset = 0, range?: { from?: Date; to?: Date }) {
     return prisma.uploadedFile.findMany({
-      where: { employeeId },
+      where: {
+        employeeId,
+        ...(range?.from || range?.to
+          ? { captureTimeUtc: { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lte: range.to } : {}) } }
+          : {}),
+      },
       orderBy: { captureTimeUtc: 'desc' },
       take: limit,
       skip: offset,
     });
   }
 
-  async listAllUploadedFiles(employeeId: string) {
+  async listAllUploadedFiles(employeeId: string, range?: { from?: Date; to?: Date }) {
     return prisma.uploadedFile.findMany({
-      where: { employeeId },
+      where: {
+        employeeId,
+        ...(range?.from || range?.to
+          ? { captureTimeUtc: { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lte: range.to } : {}) } }
+          : {}),
+      },
       orderBy: { captureTimeUtc: 'desc' },
     });
   }

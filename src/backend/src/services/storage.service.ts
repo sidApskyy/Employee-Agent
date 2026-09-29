@@ -15,6 +15,7 @@ export interface UploadFileInput {
   checksum: string;
   fileSize: number;
   capturedAt: Date;
+  captureTimeEstimated?: boolean;
 }
 
 export interface UploadFileResult {
@@ -71,7 +72,11 @@ export class StorageService {
       checksum: serverChecksum,
       checksumVerified,
       captureTimeUtc: input.capturedAt,
-      metadata: { originalChecksum: input.checksum, etag: s3Result.etag },
+      metadata: {
+        originalChecksum: input.checksum,
+        etag: s3Result.etag,
+        ...(input.captureTimeEstimated ? { captureTimeEstimated: true } : {}),
+      },
     });
 
     // Fire-and-forget: audit log and storage usage don't need to block the response
@@ -121,11 +126,11 @@ export class StorageService {
     return this.repo.getStorageUsage(employeeId, from, to);
   }
 
-  async listFiles(employeeId: string, limit = 50, offset = 0) {
-    return this.repo.listUploadedFiles(employeeId, limit, offset);
+  async listFiles(employeeId: string, limit = 50, offset = 0, range?: { from?: Date; to?: Date }) {
+    return this.repo.listUploadedFiles(employeeId, limit, offset, range);
   }
 
-  async listFilesAll(employeeId: string) {
-    return this.repo.listAllUploadedFiles(employeeId);
+  async listFilesAll(employeeId: string, range?: { from?: Date; to?: Date }) {
+    return this.repo.listAllUploadedFiles(employeeId, range);
   }
 }

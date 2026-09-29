@@ -33,9 +33,28 @@ export const listCrmScreenshots = async (req: Request, res: Response): Promise<R
 
     const employee = await findEmployeeByEmail(employeeEmail);
 
+    // Optional capture-time window from the CRM (from/to as ISO strings,
+    // or date as YYYY-MM-DD for a whole UTC day). Filters capture_time_utc —
+    // when the screenshot was taken, not when it was uploaded.
+    const parseDate = (v: unknown): Date | undefined => {
+      const s = String(v ?? '').trim();
+      if (!s) return undefined;
+      const d = new Date(s);
+      return Number.isNaN(d.getTime()) ? undefined : d;
+    };
+
+    let from = parseDate(req.query.from);
+    let to = parseDate(req.query.to);
+    const date = String(req.query.date ?? '').trim();
+    if (!from && !to && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      from = new Date(date + 'T00:00:00.000Z');
+      to = new Date(date + 'T23:59:59.999Z');
+    }
+    const range = from || to ? { from, to } : undefined;
+
     const files = fetchAll
-      ? await storageService.listFilesAll(employee.id)
-      : await storageService.listFiles(employee.id, limit, offset);
+      ? await storageService.listFilesAll(employee.id, range)
+      : await storageService.listFiles(employee.id, limit, offset, range);
 
     return res.status(200).json(successResponse({
       employee: {
@@ -44,7 +63,11 @@ export const listCrmScreenshots = async (req: Request, res: Response): Promise<R
         firstName: employee.firstName,
         lastName: employee.lastName,
       },
-      paging: fetchAll ? { mode: 'all', count: files.length } : { mode: 'paged', limit, offset, count: files.length },
+      paging: {
+        ...(fetchAll ? { mode: 'all' } : { mode: 'paged', limit, offset }),
+        count: files.length,
+        ...(range ? { from: range.from?.toISOString(), to: range.to?.toISOString() } : {}),
+      },
       files: files.map((file) => ({
         id: file.id,
         fileSize: file.fileSize,
