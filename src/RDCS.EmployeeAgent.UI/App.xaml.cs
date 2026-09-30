@@ -16,6 +16,7 @@ using RDCS.EmployeeAgent.Runtime.Upload.Repositories;
 using RDCS.EmployeeAgent.Runtime.Upload.Services;
 using RDCS.EmployeeAgent.Runtime.Upload.Workers;
 using RDCS.EmployeeAgent.Runtime.EventBus;
+using RDCS.EmployeeAgent.Runtime.Heartbeat;
 using RDCS.EmployeeAgent.Runtime.Queue;
 using RDCS.EmployeeAgent.Runtime.Policy;
 using RDCS.EmployeeAgent.Runtime.Scheduler;
@@ -196,6 +197,7 @@ public partial class App : Application
                     // Resolve the already-registered singletons so only ONE instance exists
                     services.AddHostedService(sp => (ScreenshotWorker)sp.GetRequiredService<IScreenshotWorker>());
                     services.AddHostedService(sp => (UploadWorker)sp.GetRequiredService<IUploadWorker>());
+                    services.AddHostedService<HeartbeatWorker>();
 
                     // ViewModels
                     services.AddTransient<LoginViewModel>();
@@ -216,6 +218,11 @@ public partial class App : Application
             stopwatch.Restart();
             await _host.StartAsync();
             stopwatch.Stop();
+
+            // Register auto-start on EVERY launch, not just after login:
+            // - a fresh install gets the Run key before first login
+            // - a stale exe path (reinstall/update) self-heals on the next run
+            RegisterAutoStart();
 
             // Setup global exception handlers
             GlobalExceptionHandler.SetupGlobalHandlers(logger);
