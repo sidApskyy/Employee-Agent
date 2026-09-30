@@ -36,6 +36,17 @@ export class StorageService {
   }
 
   async uploadScreenshot(input: UploadFileInput): Promise<UploadFileResult> {
+    const existing = await this.repo.findByJobId(input.jobId);
+    if (existing) {
+      return {
+        uploadId: existing.id,
+        s3ObjectKey: existing.s3ObjectKey,
+        s3Url: existing.s3Url,
+        status: existing.uploadStatus,
+        checksumVerified: existing.checksumVerified,
+      };
+    }
+
     const serverChecksum = crypto
       .createHash('sha256')
       .update(input.fileBuffer)
@@ -60,24 +71,41 @@ export class StorageService {
       checksum: serverChecksum,
     });
 
-    const record = await this.repo.createUploadedFile({
-      jobId: input.jobId,
-      correlationId: input.correlationId,
-      employeeId: input.employeeId,
-      deviceId: input.deviceId,
-      s3Bucket: s3Result.bucket,
-      s3ObjectKey: s3Result.key,
-      s3Url: s3Result.url,
-      fileSize: s3Result.sizeBytes,
-      checksum: serverChecksum,
-      checksumVerified,
-      captureTimeUtc: input.capturedAt,
-      metadata: {
-        originalChecksum: input.checksum,
-        etag: s3Result.etag,
-        ...(input.captureTimeEstimated ? { captureTimeEstimated: true } : {}),
-      },
-    });
+    let record: Awaited<ReturnType<typeof this.repo.createUploadedFile>>;
+    try {
+      record = await this.repo.createUploadedFile({
+        jobId: input.jobId,
+        correlationId: input.correlationId,
+        employeeId: input.employeeId,
+        deviceId: input.deviceId,
+        s3Bucket: s3Result.bucket,
+        s3ObjectKey: s3Result.key,
+        s3Url: s3Result.url,
+        fileSize: s3Result.sizeBytes,
+        checksum: serverChecksum,
+        checksumVerified,
+        captureTimeUtc: input.capturedAt,
+        metadata: {
+          originalChecksum: input.checksum,
+          etag: s3Result.etag,
+          ...(input.captureTimeEstimated ? { captureTimeEstimated: true } : {}),
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        const dupe = await this.repo.findByJobId(input.jobId);
+        if (dupe) {
+          return {
+            uploadId: dupe.id,
+            s3ObjectKey: dupe.s3ObjectKey,
+            s3Url: dupe.s3Url,
+            status: dupe.uploadStatus,
+            checksumVerified: dupe.checksumVerified,
+          };
+        }
+      }
+      throw err;
+    }
 
     // Fire-and-forget: audit log and storage usage don't need to block the response
     setImmediate(async () => {
@@ -113,6 +141,7 @@ export class StorageService {
   async confirmComplete(jobId: string): Promise<void> {
     const record = await this.repo.findByJobId(jobId);
     if (!record) throw new Error(`Upload record not found for jobId: ${jobId}`);
+    if (record.uploadStatus === 'completed') return;
 
     await this.repo.markCompleted(record.id);
     await this.repo.createAuditLog({
