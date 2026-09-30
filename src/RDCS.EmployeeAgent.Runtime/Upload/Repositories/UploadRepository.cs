@@ -277,4 +277,17 @@ public class UploadRepository : IUploadRepository
         await conn.ExecuteAsync(
             "UPDATE UploadQueue SET Status = 'Pending' WHERE TYPEOF(Status) = 'integer' OR Status IN ('0','1','2','3','5','6')");
     }
+
+    public async Task NormalizeQueuePrioritiesAsync(CancellationToken cancellationToken = default)
+    {
+        using var conn = _db.CreateConnection();
+        // Screenshot uploads always enqueue with Priority = 5. Anything above that
+        // is anomalous (e.g. manual queue surgery that stamped epoch timestamps
+        // into Priority) and would permanently outrank fresh captures under the
+        // 'Priority DESC' dequeue ordering — starving live screenshots behind
+        // the offline backlog. Clamp to 0 so normal jobs (5) always win and the
+        // backlog still drains in the gaps.
+        await conn.ExecuteAsync(
+            "UPDATE UploadQueue SET Priority = 0 WHERE Status IN ('Pending','Retrying') AND Priority > 5");
+    }
 }
