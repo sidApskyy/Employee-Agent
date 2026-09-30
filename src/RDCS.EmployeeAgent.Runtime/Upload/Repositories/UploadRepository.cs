@@ -118,11 +118,14 @@ public class UploadRepository : IUploadRepository
         using var conn = _db.CreateConnection();
         var now = DateTime.UtcNow.ToString("o");
         // Single query: get both Pending and due Retrying jobs in one shot, ordered correctly
+        // Newest captures first (CaptureTimeUtc DESC): fresh screenshots must not
+        // wait behind a multi-day offline backlog. Backlog still drains in the gaps
+        // since fresh captures arrive far slower than upload throughput.
         var results = await conn.QueryAsync<UploadJob>(
             @"SELECT * FROM UploadQueue
               WHERE Status = 'Pending'
                  OR (Status = 'Retrying' AND NextRetryAtUtc <= @now)
-              ORDER BY Priority DESC, CreatedAtUtc ASC
+              ORDER BY Priority DESC, CaptureTimeUtc DESC
               LIMIT @limit",
             new { limit, now });
         return results.ToList();
