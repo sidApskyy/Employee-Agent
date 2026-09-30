@@ -14,20 +14,29 @@ export const parseCaptureTimeFromFileName = (name: string): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+// If the agent-provided capturedAt disagrees with the filename timestamp by
+// more than this, the filename wins — old agents/queue replays can stamp
+// capturedAt at job-creation or upload time instead of capture time.
+const DRIFT_TOLERANCE_MS = 5 * 60 * 1000;
+
 export const resolveCaptureTime = (
   capturedAt: unknown,
   originalName: string
 ): { time: Date; estimated: boolean } => {
+  const fromName = parseCaptureTimeFromFileName(originalName);
+
   if (capturedAt) {
     const parsed = new Date(String(capturedAt));
     if (!Number.isNaN(parsed.getTime())) {
+      if (fromName && Math.abs(parsed.getTime() - fromName.getTime()) > DRIFT_TOLERANCE_MS) {
+        return { time: fromName, estimated: true };
+      }
       return { time: parsed, estimated: false };
     }
   }
 
-  // Agent sent no capturedAt (older agent version or backlog upload):
+  // Agent sent no usable capturedAt (older agent version or backlog upload):
   // recover the real capture time from the filename instead of stamping now.
-  const fromName = parseCaptureTimeFromFileName(originalName);
   if (fromName) {
     return { time: fromName, estimated: true };
   }
