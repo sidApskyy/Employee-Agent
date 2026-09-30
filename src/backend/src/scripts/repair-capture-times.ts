@@ -19,6 +19,24 @@ import { parseCaptureTimeFromFileName } from '../utils/captureTime.util';
 
 const APPLY = process.argv.includes('--apply');
 const BATCH = 5000;
+
+const parseArg = (prefix: string): string | undefined => {
+  const arg = process.argv.find((a) => a.startsWith(prefix + '='));
+  return arg ? arg.slice(prefix.length + 1) : undefined;
+};
+
+const parseSince = (): Date | undefined => {
+  const raw = parseArg('--uploaded-since');
+  if (!raw) return undefined;
+  if (raw.endsWith('h')) {
+    const hours = parseFloat(raw.slice(0, -1));
+    if (!Number.isNaN(hours)) return new Date(Date.now() - hours * 60 * 60 * 1000);
+  }
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+};
+
+const since = parseSince();
 const TOLERANCE_MS = 60 * 1000;
 const CURSOR_FILE = path.join(__dirname, '.repair-cursor');
 
@@ -37,19 +55,25 @@ const withRetry = async <T>(fn: () => Promise<T>): Promise<T> => {
 };
 
 const main = async () => {
-  let cursor: string | undefined = APPLY && fs.existsSync(CURSOR_FILE)
-    ? fs.readFileSync(CURSOR_FILE, 'utf8').trim() || undefined
-    : undefined;
-  if (cursor) console.log(`resuming from cursor ${cursor}`);
+  let cursor: string | undefined;
+  if (since) {
+    console.log('uploaded-since filter active: ignoring cursor file');
+  } else if (APPLY && fs.existsSync(CURSOR_FILE)) {
+    cursor = fs.readFileSync(CURSOR_FILE, 'utf8').trim() || undefined;
+    if (cursor) console.log(`resuming from cursor ${cursor}`);
+  }
 
   let scanned = 0;
   let mismatched = 0;
   let repaired = 0;
   let unparseable = 0;
 
+  if (since) console.log(`restricting to rows uploaded since ${since.toISOString()}`);
+
   for (;;) {
     const files = await withRetry(() =>
       prisma.uploadedFile.findMany({
+        where: since ? { uploadedAt: { gte: since } } : undefined,
         select: { id: true, s3ObjectKey: true, captureTimeUtc: true },
         orderBy: { id: 'asc' },
         take: BATCH,
