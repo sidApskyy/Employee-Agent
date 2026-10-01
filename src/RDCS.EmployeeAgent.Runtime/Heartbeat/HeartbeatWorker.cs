@@ -17,6 +17,7 @@ public class HeartbeatWorker : BackgroundWorkerBase
 {
     private readonly IHeartbeatService _heartbeatService;
     private readonly ITokenStorage _tokenStorage;
+    private readonly IDeviceInfoProvider _deviceInfoProvider;
     private readonly IConfiguration _configuration;
 
     public override string Name => "HeartbeatWorker";
@@ -24,6 +25,7 @@ public class HeartbeatWorker : BackgroundWorkerBase
     public HeartbeatWorker(
         IHeartbeatService heartbeatService,
         ITokenStorage tokenStorage,
+        IDeviceInfoProvider deviceInfoProvider,
         IConfiguration configuration,
         IEventBus eventBus,
         IAgentLogger logger)
@@ -31,6 +33,7 @@ public class HeartbeatWorker : BackgroundWorkerBase
     {
         _heartbeatService = heartbeatService;
         _tokenStorage = tokenStorage;
+        _deviceInfoProvider = deviceInfoProvider;
         _configuration = configuration;
         Configuration.ExecutionInterval = TimeSpan.FromSeconds(60);
     }
@@ -54,6 +57,23 @@ public class HeartbeatWorker : BackgroundWorkerBase
         var deviceId = !string.IsNullOrEmpty(identity?.DeviceId)
             ? identity!.DeviceId
             : _configuration["Agent:DeviceId"];
+
+        // Identities stored before the registration fix carry an empty DeviceId
+        // (login response always returns deviceId: null). Fall back to the machine
+        // fingerprint — the backend matches heartbeats by id OR machineGuid OR
+        // fingerprint, so those devices still resolve without a re-login.
+        if (string.IsNullOrEmpty(deviceId))
+        {
+            try
+            {
+                var info = await _deviceInfoProvider.GetDeviceInfoAsync(cancellationToken);
+                deviceId = !string.IsNullOrEmpty(info?.Fingerprint) ? info!.Fingerprint : info?.MachineGuid;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(LogCategory.Application, "HeartbeatWorker: device info lookup failed - {Message}", ex.Message);
+            }
+        }
 
         // Not logged in yet — nothing meaningful to report against.
         if (string.IsNullOrEmpty(employeeId) || string.IsNullOrEmpty(deviceId))

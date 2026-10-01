@@ -11,19 +11,22 @@ public class ApplicationOrchestrator
     private readonly IConfigurationService _configurationService;
     private readonly IModuleHost _moduleHost;
     private readonly IAgentLogger _logger;
+    private readonly ITokenStorage _tokenStorage;
 
     public ApplicationOrchestrator(
         IAuthenticationService authenticationService,
         IDeviceRegistrationService deviceRegistrationService,
         IConfigurationService configurationService,
         IModuleHost moduleHost,
-        IAgentLogger logger)
+        IAgentLogger logger,
+        ITokenStorage tokenStorage)
     {
         _authenticationService = authenticationService;
         _deviceRegistrationService = deviceRegistrationService;
         _configurationService = configurationService;
         _moduleHost = moduleHost;
         _logger = logger;
+        _tokenStorage = tokenStorage;
     }
 
     public async Task<AgentStatus> InitializeAsync(CancellationToken cancellationToken = default)
@@ -77,8 +80,11 @@ public class ApplicationOrchestrator
                 identity.DeviceId = deviceId;
                 identity.RequiresDeviceRegistration = false;
 
-                await _authenticationService.LogoutAsync(cancellationToken);
-                await _authenticationService.LoginAsync(email, password, cancellationToken);
+                // Persist the identity WITH the registered DeviceId. The previous
+                // logout+re-login wiped it — backend login always returns
+                // deviceId: null, so DeviceId stayed empty forever and
+                // heartbeats/telemetry had nothing to report against.
+                await _tokenStorage.StoreTokensAsync(identity, cancellationToken);
             }
 
             await DownloadAndApplyConfigurationAsync(cancellationToken);
