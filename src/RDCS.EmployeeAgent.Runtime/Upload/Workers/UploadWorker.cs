@@ -91,17 +91,16 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
             Configuration.ExecutionInterval = TimeSpan.FromSeconds(2);
         }
 
+        // Log network transitions for observability only. Do NOT pause/resume the
+        // worker on these events: if the restore event is missed (e.g. the backend
+        // DNS stays unresolvable while general internet appears fine), the worker
+        // would stay Paused forever with no log output. ExecuteAsync already gates
+        // each cycle on a fresh connectivity check, so uploads self-heal.
         _networkMonitor.NetworkLost += (_, _) =>
-        {
-            Logger.LogWarning(LogCategory.Application, "UploadWorker: Network lost — pausing uploads");
-            _ = PauseAsync(CancellationToken.None);
-        };
+            Logger.LogWarning(LogCategory.Application, "UploadWorker: Network lost — uploads will skip until connectivity returns");
 
         _networkMonitor.NetworkRestored += (_, _) =>
-        {
             Logger.LogInformation(LogCategory.Application, "UploadWorker: Network restored — resuming uploads");
-            _ = ResumeAsync(CancellationToken.None);
-        };
 
         await _networkMonitor.StartMonitoringAsync(cancellationToken);
 
