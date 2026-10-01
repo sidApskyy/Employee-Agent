@@ -78,8 +78,11 @@ public class HeartbeatWorker : BackgroundWorkerBase
     protected override Task OnErrorAsync(Exception exception, CancellationToken cancellationToken)
     {
         // Heartbeat failures are non-fatal (offline, expired token pending refresh,
-        // backend restart) — log and let the worker loop retry on the next interval.
+        // backend restart). Reset State to Running — otherwise BackgroundWorkerBase
+        // breaks the loop permanently and heartbeats stop until the next app restart.
         Logger.LogWarning(LogCategory.Application, "HeartbeatWorker: heartbeat failed - {Message}", exception.Message);
+        State = WorkerState.Running;
+        UpdateHealth(HealthStatus.Degraded, $"Recovered from error: {exception.Message}");
         return Task.CompletedTask;
     }
 }

@@ -181,6 +181,8 @@ public class AutoCleanupWorker : BackgroundWorkerBase
     protected override Task OnErrorAsync(Exception exception, CancellationToken cancellationToken)
     {
         Logger.LogError(LogCategory.Exception, "Auto Cleanup Worker error", exception);
+        State = WorkerState.Running;
+        UpdateHealth(HealthStatus.Degraded, $"Recovered from error: {exception.Message}");
         return Task.CompletedTask;
     }
 }

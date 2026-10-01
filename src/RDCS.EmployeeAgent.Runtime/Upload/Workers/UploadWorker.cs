@@ -422,6 +422,11 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
     protected override Task OnErrorAsync(Exception exception, CancellationToken cancellationToken)
     {
         Logger.LogError(LogCategory.Exception, "UploadWorker unhandled error", exception);  // correct signature
+        // Never let the worker die: BackgroundWorkerBase breaks the loop permanently
+        // when State stays Error. Reset to Running so a transient fault (DB lock,
+        // network blip) doesn't stop uploads until the next app restart.
+        State = WorkerState.Running;
+        UpdateHealth(HealthStatus.Degraded, $"Recovered from error: {exception.Message}");
         return Task.CompletedTask;
     }
 }

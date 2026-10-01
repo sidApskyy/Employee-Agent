@@ -170,6 +170,16 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
         var shouldCapture = await ShouldCaptureAsync(cancellationToken);
         ScreenshotWorkerTracer.Trace($"EXECUTE: ShouldCaptureAsync returned {shouldCapture}");
 
+        // CopyFromScreen throws (or returns garbage) while the workstation is locked
+        // or the console is on the secure desktop — skip the tick quietly instead of
+        // logging a failure storm that can push the worker into the dead Error state.
+        if (shouldCapture && IsWorkstationLocked())
+        {
+            ScreenshotWorkerTracer.Trace("EXECUTE: Workstation locked, skipping capture tick");
+            Logger.LogInformation(LogCategory.Application, "ScreenshotWorker skipping capture - workstation is locked");
+            shouldCapture = false;
+        }
+
         if (shouldCapture)
         {
             ScreenshotWorkerTracer.Trace("EXECUTE: Starting CaptureAndProcessAsync");
@@ -404,9 +414,40 @@ public class ScreenshotWorker : BackgroundWorkerBase, IScreenshotWorker
         }
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr OpenInputDesktop(uint dwFlags, bool fInherit, uint dwDesiredAccess);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool CloseDesktop(IntPtr hDesktop);
+
+    /// <summary>
+    /// Returns true when the input desktop is not the user's desktop (lock screen,
+    /// UAC prompt, screensaver, RDP disconnected). OpenInputDesktop fails on the
+    /// secure desktop — capturing there would throw or produce blank frames.
+    /// </summary>
+    private static bool IsWorkstationLocked()
+    {
+        try
+        {
+            var hDesktop = OpenInputDesktop(0, false, 0x0001 /*DESKTOP_READOBJECTS*/);
+            if (hDesktop == IntPtr.Zero) return true;
+            CloseDesktop(hDesktop);
+            return false;
+        }
+        catch
+        {
+            return false; // don't suppress capture if detection itself fails
+        }
+    }
+
     protected override Task OnErrorAsync(Exception exception, CancellationToken cancellationToken)
     {
         Logger.LogError(LogCategory.Exception, "Screenshot Worker error", exception);
+        // Never let the worker die: BackgroundWorkerBase breaks the loop permanently
+        // when State stays Error — a locked screen or transient DB fault would stop
+        // all capture until the next app restart. Reset to Running so it recovers.
+        State = WorkerState.Running;
+        UpdateHealth(HealthStatus.Degraded, $"Recovered from error: {exception.Message}");
         return Task.CompletedTask;
     }
 }
