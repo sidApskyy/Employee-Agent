@@ -72,6 +72,28 @@ public class UploadRepository : IUploadRepository
         });
     }
 
+    public async Task<List<UploadJob>> GetOrphanedScreenshotUploadsAsync(int limit = 5000, CancellationToken cancellationToken = default)
+    {
+        using var conn = _db.CreateConnection();
+        const string sql = @"
+            SELECT s.Id AS CaptureId,
+                   s.CorrelationId,
+                   s.EmployeeId,
+                   s.DeviceId,
+                   s.StoragePath || char(92) || s.FilePath AS LocalFilePath,
+                   s.FileSizeBytes AS FileSize,
+                   s.CaptureTimeUtc
+            FROM Screenshots s
+            WHERE s.UploadStatus = 'Pending'
+              AND NOT EXISTS (
+                  SELECT 1 FROM UploadQueue u WHERE u.CorrelationId = s.CorrelationId
+              )
+            ORDER BY s.CaptureTimeUtc DESC
+            LIMIT @limit";
+        var rows = await conn.QueryAsync<UploadJob>(sql, new { limit });
+        return rows.ToList();
+    }
+
     public async Task<UploadJob?> GetJobByIdAsync(string jobId, CancellationToken cancellationToken = default)
     {
         using var conn = _db.CreateConnection();

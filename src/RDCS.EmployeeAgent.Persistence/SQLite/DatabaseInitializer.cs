@@ -364,14 +364,38 @@ public class DatabaseInitializer
         ";
         await command.ExecuteNonQueryAsync(cancellationToken);
 
-        // Add CaptureTimeUtc column if it doesn't exist (migration for existing databases)
-        try
+        // Migrations for databases created before these columns existed.
+        // Without them, enqueueing uploads throws 'no such column' and every
+        // captured screenshot is orphaned on disk — never queued, never uploaded.
+        await EnsureColumnAsync(connection, "UploadQueue", "UploadId", "TEXT", cancellationToken);
+        await EnsureColumnAsync(connection, "UploadQueue", "CaptureId", "TEXT", cancellationToken);
+        await EnsureColumnAsync(connection, "UploadQueue", "CaptureTimeUtc", "TEXT", cancellationToken);
+    }
+
+    private async Task EnsureColumnAsync(SqliteConnection connection, string table, string column, string type, CancellationToken cancellationToken)
+    {
+        var check = connection.CreateCommand();
+        check.CommandText = $"PRAGMA table_info({table})";
+
+        var exists = false;
+        using (var reader = await check.ExecuteReaderAsync(cancellationToken))
         {
-            var migrateCmd = connection.CreateCommand();
-            migrateCmd.CommandText = "ALTER TABLE UploadQueue ADD COLUMN CaptureTimeUtc TEXT;";
-            await migrateCmd.ExecuteNonQueryAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
         }
-        catch { /* Column already exists, ignore */ }
+
+        if (exists) return;
+
+        var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {type};";
+        await alter.ExecuteNonQueryAsync(cancellationToken);
+        _logger.LogInformation(LogCategory.Application, "Migration applied: added column {Column} to table {Table}", column, table);
     }
 
     private async Task CreateUploadHistoryTableAsync(SqliteConnection connection, CancellationToken cancellationToken)

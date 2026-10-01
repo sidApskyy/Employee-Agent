@@ -12,6 +12,9 @@ public interface IUploadRepository
     Task MarkFailedAsync(string jobId, string errorMessage, CancellationToken cancellationToken = default);
     Task<UploadJob?> GetJobByIdAsync(string jobId, CancellationToken cancellationToken = default);
     Task<List<UploadJob>> GetPendingJobsAsync(int limit = 50, CancellationToken cancellationToken = default);
+    /// <summary>Screenshots saved locally whose enqueue failed (e.g. missing-column
+    /// schema on upgraded DBs) — pending in Screenshots but absent from UploadQueue.</summary>
+    Task<List<UploadJob>> GetOrphanedScreenshotUploadsAsync(int limit = 5000, CancellationToken cancellationToken = default);
     Task<List<UploadJob>> GetRetryReadyJobsAsync(CancellationToken cancellationToken = default);
     Task<List<UploadJob>> GetDeadLetterJobsAsync(CancellationToken cancellationToken = default);
     Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default);

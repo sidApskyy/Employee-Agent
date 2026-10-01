@@ -74,6 +74,59 @@ public class UploadQueueService : IUploadQueueService
         _logger.LogWarning(LogCategory.Application,
             "UploadQueueService: Reset stuck Uploading/Preparing jobs to Pending after crash recovery");
         await _repository.NormalizeQueuePrioritiesAsync(cancellationToken);
+        await RecoverOrphanedScreenshotsAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Re-enqueue screenshots that were captured and saved to disk but never made it
+    /// into UploadQueue (e.g. enqueue threw on the missing CaptureId column before the
+    /// schema migration). Runs at startup so recovered work rides behind fresh captures.
+    /// </summary>
+    private async Task RecoverOrphanedScreenshotsAsync(CancellationToken cancellationToken)
+    {
+        List<UploadJob> orphans;
+        try
+        {
+            orphans = await _repository.GetOrphanedScreenshotUploadsAsync(cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // Older DBs may lack Screenshots columns — never let recovery break startup
+            _logger.LogWarning(LogCategory.Application,
+                "UploadQueueService: orphan screenshot scan skipped - {Message}", ex.Message);
+            return;
+        }
+
+        var recovered = 0;
+
+        foreach (var job in orphans)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(job.LocalFilePath) || !System.IO.File.Exists(job.LocalFilePath))
+                {
+                    continue; // file gone — nothing to upload
+                }
+
+                job.JobId = Guid.NewGuid().ToString();
+                job.Priority = 0;          // backlog — fresh captures (5) go first
+                job.MaxRetryCount = 5;
+                await EnqueueAsync(job, cancellationToken);
+                recovered++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(LogCategory.Application,
+                    "UploadQueueService: failed to recover orphaned screenshot {Path} - {Message}",
+                    job.LocalFilePath, ex.Message);
+            }
+        }
+
+        if (recovered > 0)
+        {
+            _logger.LogWarning(LogCategory.Application,
+                "UploadQueueService: recovered {Count} orphaned screenshots into the upload queue", recovered);
+        }
     }
 
     public async Task ExpediteAllRetriesAsync(CancellationToken cancellationToken = default)
