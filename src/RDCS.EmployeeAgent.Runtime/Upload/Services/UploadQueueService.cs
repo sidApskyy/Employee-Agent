@@ -74,15 +74,15 @@ public class UploadQueueService : IUploadQueueService
         _logger.LogWarning(LogCategory.Application,
             "UploadQueueService: Reset stuck Uploading/Preparing jobs to Pending after crash recovery");
         await _repository.NormalizeQueuePrioritiesAsync(cancellationToken);
-        await RecoverOrphanedScreenshotsAsync(cancellationToken);
     }
 
     /// <summary>
     /// Re-enqueue screenshots that were captured and saved to disk but never made it
     /// into UploadQueue (e.g. enqueue threw on the missing CaptureId column before the
-    /// schema migration). Runs at startup so recovered work rides behind fresh captures.
+    /// schema migration). Runs in the background after startup — it can scan tens of
+    /// thousands of rows on old installs, so it must never block the worker loop.
     /// </summary>
-    private async Task RecoverOrphanedScreenshotsAsync(CancellationToken cancellationToken)
+    public async Task RecoverOrphanedScreenshotsAsync(CancellationToken cancellationToken)
     {
         List<UploadJob> orphans;
         try

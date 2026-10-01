@@ -361,6 +361,7 @@ public class DatabaseInitializer
             CREATE INDEX IF NOT EXISTS idx_uploadqueue_priority ON UploadQueue(Priority);
             CREATE INDEX IF NOT EXISTS idx_uploadqueue_employee ON UploadQueue(EmployeeId);
             CREATE INDEX IF NOT EXISTS idx_uploadqueue_retry ON UploadQueue(NextRetryAtUtc);
+            CREATE INDEX IF NOT EXISTS idx_uploadqueue_correlationid ON UploadQueue(CorrelationId);
         ";
         await command.ExecuteNonQueryAsync(cancellationToken);
 

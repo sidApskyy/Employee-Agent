@@ -107,6 +107,22 @@ public class UploadWorker : BackgroundWorkerBase, IUploadWorker
         // Recover jobs left in Uploading/Preparing state from a previous crash
         await _queueService.ResetStuckJobsAsync(cancellationToken);
         Logger.LogInformation(LogCategory.Application, "UploadWorker: Stuck job recovery completed");
+
+        // Orphan screenshot recovery scans the whole Screenshots table and checks
+        // files on disk — potentially tens of thousands of rows on old installs.
+        // Run it in the background so it can't block the worker loop from starting
+        // (a hung scan previously froze uploads and heartbeat startup entirely).
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _queueService.RecoverOrphanedScreenshotsAsync(CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(LogCategory.Exception, "UploadWorker: orphan screenshot recovery failed", ex);
+            }
+        });
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)

@@ -12,5 +12,6 @@ public interface IUploadQueueService
     Task MarkFailedAsync(string jobId, string errorMessage, CancellationToken cancellationToken = default);
     Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default);
     Task ResetStuckJobsAsync(CancellationToken cancellationToken = default);
+    Task RecoverOrphanedScreenshotsAsync(CancellationToken cancellationToken = default);
     Task ExpediteAllRetriesAsync(CancellationToken cancellationToken = default);
 }
