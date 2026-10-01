@@ -63,17 +63,21 @@ public partial class ShellViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task LogoutAsync()
+    private void HideWindow()
     {
         try
         {
-            _logger.LogInformation(LogCategory.Authentication, "Logout requested");
-            await _orchestrator.ShutdownAsync();
-            Application.Current.Shutdown();
+            _logger.LogInformation(LogCategory.Authentication, "Hide requested - agent keeps running in tray");
+            // Hiding only closes the UI. The hosted workers (capture, upload,
+            // heartbeat) live in the host process and keep running regardless.
+            foreach (var window in Application.Current.Windows.OfType<Views.ShellWindow>().ToList())
+            {
+                window.Hide();
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(LogCategory.Authentication, "Logout failed", ex);
+            _logger.LogError(LogCategory.Authentication, "Hide failed", ex);
         }
     }
 

@@ -96,10 +96,11 @@
                     Foreground="White"
                     BorderThickness="0"
                     Cursor="Hand"/>
-            <Button Content="Logout" 
-                    Command="{Binding LogoutCommand}"
+            <Button Content="Hide" 
+                    Command="{Binding HideWindowCommand}"
+                    ToolTip="Close this window — the agent keeps running in the system tray"
                     Padding="10,5"
-                    Background="#E74C3C"
+                    Background="#95A5A6"
                     Foreground="White"
                     BorderThickness="0"
                     Cursor="Hand"/>
