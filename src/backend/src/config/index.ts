@@ -24,4 +24,7 @@ export const config = {
   s3AccessKeyId: process.env.S3_ACCESS_KEY_ID || '',
   s3SecretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
   crmScreenshotApiKey: process.env.CRM_SCREENSHOT_API_KEY || '',
+  // Days of screenshots to keep (0 = keep forever). Background purge runs in production only.
+  screenshotRetentionDays: parseInt(process.env.SCREENSHOT_RETENTION_DAYS ?? '60', 10),
+  isProduction,
 };

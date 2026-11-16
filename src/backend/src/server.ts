@@ -1,6 +1,7 @@
 import { createApp } from './app';
 import { config } from './config';
 import { AmazonS3Provider } from './providers/AmazonS3Provider';
+import { startScreenshotRetentionJob } from './services/retention.service';
 
 async function bootstrap(): Promise<void> {
   const s3 = new AmazonS3Provider();
@@ -15,6 +16,10 @@ async function bootstrap(): Promise<void> {
   app.listen(config.port, () => {
     console.log(`Server running on port ${config.port} in ${config.environment} mode`);
   });
+
+  if (config.isProduction && config.s3BucketName) {
+    startScreenshotRetentionJob(config.screenshotRetentionDays);
+  }
 }
 
 void bootstrap();

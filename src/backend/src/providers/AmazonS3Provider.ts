@@ -2,6 +2,7 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   HeadBucketCommand,
   HeadObjectCommand,
   GetObjectCommand,
@@ -108,6 +109,31 @@ export class AmazonS3Provider {
     await this.client.send(
       new DeleteObjectCommand({ Bucket: this.bucket, Key: key })
     );
+  }
+
+  /**
+   * Delete up to 1000 objects in one request. Returns the keys that are gone
+   * (deleted now or already missing) and the keys S3 refused to delete.
+   */
+  async deleteFiles(keys: string[]): Promise<{ deleted: string[]; failed: { key: string; code: string }[] }> {
+    if (keys.length === 0) return { deleted: [], failed: [] };
+    if (keys.length > 1000) throw new Error('deleteFiles accepts at most 1000 keys per call');
+
+    const response = await this.client.send(
+      new DeleteObjectsCommand({
+        Bucket: this.bucket,
+        Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+      })
+    );
+    const failed = (response.Errors ?? [])
+      .filter((e) => e.Key && e.Code !== 'NoSuchKey')
+      .map((e) => ({ key: e.Key as string, code: e.Code ?? 'Unknown' }));
+    const failedKeys = new Set(failed.map((f) => f.key));
+    return { deleted: keys.filter((k) => !failedKeys.has(k)), failed };
+  }
+
+  get bucketName(): string {
+    return this.bucket;
   }
 
   async objectExists(key: string): Promise<boolean> {
